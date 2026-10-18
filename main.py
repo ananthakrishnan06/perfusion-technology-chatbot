@@ -128,10 +128,16 @@ if frontend_dir.exists():
     app.mount("/app", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
 
 
-@app.get("/", include_in_schema=False)
-def root_redirect():
-    """Redirect root to the interactive Perfusion AI decision workspace."""
-    return RedirectResponse(url="/app/")
+@app.get("/", summary="API Root", tags=["Health"])
+def api_root():
+    """Root endpoint for backend API status and documentation link."""
+    return {
+        "status": "online",
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "docs_url": "/docs",
+        "health_check": "/api/v1/health"
+    }
 
 
 if __name__ == "__main__":

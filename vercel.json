@@ -6,19 +6,19 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://perfusion-backend.azurewebsites.net/api/:path*"
+      "destination": "https://perfusion-backend.onrender.com/api/:path*"
     },
     {
       "source": "/health",
-      "destination": "https://perfusion-backend.azurewebsites.net/health"
+      "destination": "https://perfusion-backend.onrender.com/health"
     },
     {
       "source": "/docs",
-      "destination": "https://perfusion-backend.azurewebsites.net/docs"
+      "destination": "https://perfusion-backend.onrender.com/docs"
     },
     {
       "source": "/openapi.json",
-      "destination": "https://perfusion-backend.azurewebsites.net/openapi.json"
+      "destination": "https://perfusion-backend.onrender.com/openapi.json"
     },
     {
       "source": "/app/:path*",
@@ -37,4 +37,3 @@
     }
   ]
 }
-
