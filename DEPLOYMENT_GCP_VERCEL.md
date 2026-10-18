@@ -110,3 +110,4 @@ In less than 30 seconds, Vercel will give you a live production URL:
 - [ ] Verify **Knowledge Library** shows the indexed 799-page textbook
 - [ ] Sign in with institutional email or Google OAuth via Supabase
 - [ ] Verify past chat history saves and loads from Neon PostgreSQL
+
