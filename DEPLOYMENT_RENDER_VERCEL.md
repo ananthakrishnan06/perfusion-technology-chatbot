@@ -39,7 +39,7 @@ Scroll down to the **Environment Variables** section and click **Add Environment
 
 | Key | Value to Paste |
 | :--- | :--- |
-| **`GROQ_API_KEY`** | `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` |
+| **`GROQ_API_KEY`** | `gsk_your_groq_api_key_from_console.groq.com` |
 | **`DATABASE_URL`** | `postgresql://neondb_owner:npg_mLCy2t7MFQDU@ep-noisy-wind-b4aw25ni-pooler.c-6.us-east-2.aws.neon.tech/neondb?channel_binding=require&sslmode=require` |
 | **`SUPABASE_URL`** | `https://vpwrrtpotyprdxcevelr.supabase.co` |
 | **`SUPABASE_ANON_KEY`** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZwd3JydHBvdHlwcmR4Y2V2ZWxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyNzYyNDksImV4cCI6MjEwNzg1MjI0OX0.5lLt15NF2_qkES-azdYmERH4qSg_ca1ATMQClSgHaoU` |
