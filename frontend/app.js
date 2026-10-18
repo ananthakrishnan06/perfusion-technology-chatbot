@@ -994,7 +994,7 @@ async function fetchAuthConfig() {
     const res = await fetch(apiEndpoint('/api/v1/auth/config'));
     if (res.ok) {
       state.authConfig = await res.json();
-      updateAuthModalConfigUI();
+      updateAuthModalConfigUI(false);
       initializeGoogleGSI();
       initSupabaseClient();
     }
@@ -1109,17 +1109,19 @@ async function syncSupabaseSession(accessToken) {
   return null;
 }
 
-function updateAuthModalConfigUI() {
+function updateAuthModalConfigUI(populateInputs = false) {
   const badge = document.getElementById('oauth-status-badge');
   const desc = document.getElementById('oauth-status-desc');
   const supaUrlInput = document.getElementById('input-supabase-url');
   const supaKeyInput = document.getElementById('input-supabase-key');
 
-  if (supaUrlInput && state.authConfig.supabase_url) {
-    supaUrlInput.value = state.authConfig.supabase_url;
-  }
-  if (supaKeyInput && state.authConfig.supabase_anon_key) {
-    supaKeyInput.value = state.authConfig.supabase_anon_key;
+  if (populateInputs) {
+    if (supaUrlInput && state.authConfig.supabase_url) {
+      supaUrlInput.value = state.authConfig.supabase_url;
+    }
+    if (supaKeyInput && state.authConfig.supabase_anon_key) {
+      supaKeyInput.value = state.authConfig.supabase_anon_key;
+    }
   }
 
   if (state.authConfig.supabase_enabled) {
@@ -1579,7 +1581,7 @@ function openGoogleAuthModal() {
   if (modal) {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
-    updateAuthModalConfigUI();
+    updateAuthModalConfigUI(true);
     if (window.lucide) lucide.createIcons();
   }
 }

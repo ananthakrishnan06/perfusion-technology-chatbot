@@ -1195,12 +1195,17 @@
           </ol>
         </div>
 
-        <div class="space-y-2">
+        <div class="space-y-2" autocomplete="off">
           <div>
             <label class="text-[10px] font-mono-code uppercase text-neutral-500 font-semibold">Supabase Project URL</label>
             <input 
               id="input-supabase-url" 
               type="text" 
+              name="cfg_supa_endpoint"
+              autocomplete="off"
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
               placeholder="e.g. https://your-project.supabase.co" 
               class="w-full border border-subtleborder rounded-lg px-2.5 py-1.5 text-xs text-darktext bg-white focus:outline-none focus:border-neutral-400 font-mono-code"
             />
@@ -1209,7 +1214,13 @@
             <label class="text-[10px] font-mono-code uppercase text-neutral-500 font-semibold">Supabase Anon Key</label>
             <input 
               id="input-supabase-key" 
-              type="password" 
+              type="text"
+              name="cfg_supa_token"
+              autocomplete="off"
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
+              style="-webkit-text-security: disc;"
               placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." 
               class="w-full border border-subtleborder rounded-lg px-2.5 py-1.5 text-xs text-darktext bg-white focus:outline-none focus:border-neutral-400 font-mono-code"
             />
@@ -1231,7 +1242,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20261018_v1"></script>
-  <script src="app.js?v=20261018_v7"></script>
+  <script src="config.js?v=20261018_v2"></script>
+  <script src="app.js?v=20261018_v8"></script>
 </body>
 </html>
