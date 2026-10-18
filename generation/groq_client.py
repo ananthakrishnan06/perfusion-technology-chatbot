@@ -26,12 +26,41 @@ class GroqClientWrapper:
     timeout management, and credential protection.
     """
 
-    FALLBACK_MODELS = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
+    DECOMMISSIONED_MODELS = {
+        "gemma2-9b-it",
         "mixtral-8x7b-32768",
-        "gemma2-9b-it"
+        "llama3-70b-8192",
+        "llama3-8b-8192",
+        "llama-3.2-1b-preview",
+        "llama-3.2-3b-preview",
+        "llama-3.2-11b-vision-preview",
+        "llama-3.2-90b-vision-preview",
+        "deepseek-r1-distill-llama-70b",
+        "deepseek-r1-distill-qwen-32b",
+        "qwen-2.5-32b",
+        "qwen-2.5-coder-32b",
+        "qwen-qwq-32b",
+        "qwen/qwen3.6-27b",
+        "mistral-saba-24b",
+    }
+
+    FALLBACK_MODELS = [
+        "llama-3.1-8b-instant",
+        "openai/gpt-oss-20b",
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.8-27b"
     ]
+
+    def _get_models_to_try(self) -> List[str]:
+        """Build an ordered list of active Groq models, filtering out known decommissioned ones."""
+        models: List[str] = []
+        if self.model and self.model not in self.DECOMMISSIONED_MODELS:
+            models.append(self.model)
+        for m in self.FALLBACK_MODELS:
+            if m not in models and m not in self.DECOMMISSIONED_MODELS:
+                models.append(m)
+        return models or ["openai/gpt-oss-20b"]
 
     def __init__(
         self,
@@ -92,11 +121,7 @@ class GroqClientWrapper:
 
         client = self._get_client()
 
-        # Build model cascade starting with requested model
-        models_to_try = [self.model]
-        for m in self.FALLBACK_MODELS:
-            if m not in models_to_try:
-                models_to_try.append(m)
+        models_to_try = self._get_models_to_try()
 
         last_error = None
         for current_model in models_to_try:
@@ -167,6 +192,13 @@ class GroqClientWrapper:
                 error_msg = str(e)
                 last_error = e
 
+                # Check for decommissioned, deprecated, or not found models
+                if "decommissioned" in error_msg.lower() or "not_found" in error_msg.lower() or "model_decommissioned" in error_msg.lower():
+                    logger.warning(
+                        f"Model {current_model} is decommissioned or unavailable on Groq. Cascading to fallback model..."
+                    )
+                    continue
+
                 # If rate-limited, log warning and cascade to fallback model
                 if "RateLimitError" in error_type or "429" in error_msg or "rate_limit" in error_msg.lower():
                     logger.warning(
@@ -202,10 +234,7 @@ class GroqClientWrapper:
         Yields individual token strings as they are generated.
         """
         client = self._get_client()
-        models_to_try = [self.model]
-        for m in self.FALLBACK_MODELS:
-            if m not in models_to_try:
-                models_to_try.append(m)
+        models_to_try = self._get_models_to_try()
 
         for current_model in models_to_try:
             try:
@@ -216,13 +245,22 @@ class GroqClientWrapper:
                     max_tokens=self.max_tokens if max_tokens is None else max_tokens,
                     stream=True
                 )
+                yielded_any = False
                 for chunk in stream:
                     if chunk.choices and chunk.choices[0].delta:
                         content = chunk.choices[0].delta.content or ""
                         if content:
                             yield content
-                return
+                            yielded_any = True
+                if yielded_any:
+                    return
             except Exception as e:
-                logger.warning(f"Groq stream error on {current_model}: {e}")
+                error_msg = str(e)
+                if "decommissioned" in error_msg.lower() or "not_found" in error_msg.lower() or "model_decommissioned" in error_msg.lower():
+                    logger.warning(f"Groq stream model {current_model} decommissioned/unavailable. Cascading to fallback model...")
+                elif "429" in error_msg or "rate_limit" in error_msg.lower():
+                    logger.warning(f"Groq stream model {current_model} rate limited. Cascading to fallback model...")
+                else:
+                    logger.warning(f"Groq stream error on {current_model}: {e}")
                 continue
 

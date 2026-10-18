@@ -38,8 +38,8 @@ class Settings(BaseSettings):
     # Groq API Configuration
     GROQ_API_KEY: str = Field(default="", description="API Key for Groq cloud API")
     GROQ_MODEL: str = Field(
-        default="llama-3.3-70b-versatile",
-        description="Supported Groq chat model (e.g., llama-3.3-70b-versatile, llama-3.1-8b-instant)"
+        default="llama-3.1-8b-instant",
+        description="Supported Groq chat model (e.g., llama-3.1-8b-instant, openai/gpt-oss-20b, llama-3.3-70b-versatile)"
     )
     GROQ_TEMPERATURE: float = Field(default=0.1, ge=0.0, le=2.0)
     GROQ_MAX_TOKENS: int = Field(default=3500, ge=1, le=8192)
