@@ -42,7 +42,7 @@ class GeminiClientWrapper:
         max_tokens: int = settings.GEMINI_MAX_TOKENS,
         timeout: float = settings.GEMINI_REQUEST_TIMEOUT
     ):
-        self.api_key = api_key or settings.GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY", "")
+        self.api_key = api_key if api_key is not None else (settings.GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY", ""))
         self.model = model or "gemini-3.6-flash"
         self.temperature = temperature
         self.max_tokens = max_tokens

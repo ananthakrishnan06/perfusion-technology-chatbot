@@ -259,3 +259,41 @@ def test_transcribe_audio_endpoint(test_client, monkeypatch):
     data = res.json()
     assert data["text"] == "What are the priming volume constituents for adult CPB?"
 
+
+def test_validation_error_handler_returns_string_detail(test_client):
+    """Test that 422 validation errors return human-readable string message and detail."""
+    res = test_client.post("/api/v1/chat/ask", json={"question": ""})
+    assert res.status_code == 422
+    data = res.json()
+    assert data["error"] is True
+    assert isinstance(data["detail"], str)
+    assert isinstance(data["message"], str)
+    assert "question" in data["detail"]
+    # Verify it does not serialize as '[object Object]' or unhandled list
+    assert "[object" not in data["detail"]
+
+
+def test_chat_payload_sanitizes_null_conv_id_and_history(test_client, monkeypatch):
+    """Test that string 'null' conversation_id and weird roles in history are sanitized."""
+    from generation.gemini_client import GeminiClientWrapper
+    monkeypatch.setattr(
+        GeminiClientWrapper,
+        "generate_chat_completion",
+        lambda self, messages, **kwargs: "Normal perfusion answer."
+    )
+
+    payload = {
+        "question": "What is prime volume?",
+        "conversation_id": "null",
+        "conversation_history": [
+            {"role": "human", "content": "  hello  "},
+            {"role": "unknown", "content": ""}
+        ]
+    }
+    res = test_client.post("/api/v1/chat/ask", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["grounded"] is False
+    assert "could not find sufficient" in data["answer"].lower()
+
+

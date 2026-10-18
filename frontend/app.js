@@ -28,6 +28,29 @@ function apiEndpoint(path) {
   return `${base.replace(/\/+$/, '')}${path}`;
 }
 
+// Resilient API Error String Extractor (eliminates [object Object] forever)
+function extractErrorMessage(errData, fallbackMsg = 'Request could not be completed') {
+  if (!errData) return fallbackMsg;
+  if (typeof errData === 'string') return errData;
+  if (Array.isArray(errData.detail)) {
+    const list = errData.detail.map(d => {
+      if (!d) return '';
+      if (typeof d === 'string') return d;
+      return d.msg || d.message || JSON.stringify(d);
+    }).filter(Boolean);
+    if (list.length > 0) return list.join('; ');
+  }
+  if (typeof errData.detail === 'string' && errData.detail.trim()) return errData.detail.trim();
+  if (errData.detail && typeof errData.detail === 'object') {
+    if (typeof errData.detail.message === 'string') return errData.detail.message;
+    return JSON.stringify(errData.detail);
+  }
+  if (typeof errData.message === 'string' && errData.message.trim()) return errData.message.trim();
+  if (errData.message && typeof errData.message === 'object') return JSON.stringify(errData.message);
+  if (typeof errData.error === 'string' && errData.error.trim()) return errData.error.trim();
+  return fallbackMsg;
+}
+
 // ==========================================
 // 1. INITIALIZATION & HEALTH CHECK
 // ==========================================
@@ -632,7 +655,7 @@ function startVoiceInput() {
             });
             if (!resp.ok) {
               const err = await resp.json().catch(() => ({}));
-              throw new Error(err.detail || 'Transcription failed');
+              throw new Error(extractErrorMessage(err, 'Transcription failed'));
             }
             const data = await resp.json();
             if (data.text && chatInput) {
@@ -747,10 +770,12 @@ async function sendChatMessage() {
   }
 
   try {
-    const payloadHistory = state.chatHistory.map(m => ({
-      role: m.role,
-      content: m.content
-    }));
+    const payloadHistory = (state.chatHistory || [])
+      .filter(m => m && typeof m.content === 'string' && m.content.trim().length > 0)
+      .map(m => ({
+        role: (m.role === 'user' ? 'user' : 'assistant'),
+        content: m.content.trim()
+      }));
 
     const payload = {
       question: formattedQuery,
@@ -760,7 +785,7 @@ async function sendChatMessage() {
     if (state.activeDocId) {
       payload.document_ids = [state.activeDocId];
     }
-    if (state.currentConversationId) {
+    if (state.currentConversationId && state.currentConversationId !== 'null' && state.currentConversationId !== 'undefined') {
       payload.conversation_id = state.currentConversationId;
     }
 
@@ -875,8 +900,9 @@ async function sendChatMessage() {
       hideBackendLoading();
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.detail || err.message || 'Request could not be completed');
+        const errJson = await response.json().catch(() => ({}));
+        const parsedMsg = extractErrorMessage(errJson, `Server error: ${response.status}`);
+        throw new Error(parsedMsg);
       }
 
       const data = await response.json();
@@ -914,8 +940,16 @@ async function sendChatMessage() {
     clearTimeout(chatLoadingTimer);
     hideBackendLoading();
     typingIndicator.remove();
+    if (assistantMsgEl && assistantMsgEl.parentNode) {
+      assistantMsgEl.remove();
+    }
 
-    const isNetworkOrColdStart = /failed to fetch|networkerror|load failed|network request failed|502|503|service unavailable/i.test(err.message || '');
+    const rawMsg = (err && typeof err.message === 'string') ? err.message : extractErrorMessage(err);
+    const displayMsg = (!rawMsg || rawMsg === '[object Object]')
+      ? 'The cloud server encountered a temporary issue. Please re-send your question or start a fresh chat.'
+      : rawMsg;
+
+    const isNetworkOrColdStart = /failed to fetch|networkerror|load failed|network request failed|502|503|service unavailable/i.test(displayMsg);
     const errorBubble = document.createElement('div');
     errorBubble.className = 'flex items-start space-x-3 max-w-2xl';
     errorBubble.innerHTML = `
@@ -925,7 +959,7 @@ async function sendChatMessage() {
       <div class="${isNetworkOrColdStart ? 'bg-amber-50 border border-amber-200 text-amber-950' : 'bg-rose-50 border border-rose-200 text-rose-900'} rounded-2xl rounded-tl-sm p-3.5 shadow-xs text-xs space-y-1">
         <p class="font-semibold">${isNetworkOrColdStart ? 'Backend was waking up (Cold Start)' : 'Unable to generate reply'}</p>
         <p class="font-mono-code text-[11px] leading-relaxed">
-          ${isNetworkOrColdStart ? 'Free cloud servers take ~30–45s to spin up from sleep mode. The server is initializing now. Please press Enter or click Send to try again.' : escapeHtml(err.message)}
+          ${isNetworkOrColdStart ? 'Free cloud servers take ~30–45s to spin up from sleep mode. The server is initializing now. Please press Enter or click Send to try again.' : escapeHtml(displayMsg)}
         </p>
       </div>
     `;
@@ -1066,7 +1100,7 @@ async function generateMCQs() {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `Server error: ${res.status}`);
+      throw new Error(extractErrorMessage(err, `Server error: ${res.status}`));
     }
 
     const data = await res.json();
@@ -1524,7 +1558,7 @@ async function saveSupabaseCredentials() {
       closeGoogleAuthModal();
     } else {
       const err = await res.json().catch(() => ({}));
-      showToastNotification(`Activation failed: ${err.detail || 'Could not save credentials'}`, 'error');
+      showToastNotification(`Activation failed: ${extractErrorMessage(err, 'Could not save credentials')}`, 'error');
     }
   } catch (err) {
     showToastNotification('Network error saving Supabase credentials', 'error');
@@ -1616,7 +1650,7 @@ async function handleGoogleCredentialResponse(response) {
       showAuthNotification(`Signed in as ${user.name}`);
     } else {
       const err = await res.json().catch(() => ({}));
-      showToastNotification(`Sign-in failed: ${err.detail || err.message || 'Invalid Token'}`, 'error');
+      showToastNotification(`Sign-in failed: ${extractErrorMessage(err, 'Invalid Token')}`, 'error');
     }
   } catch (err) {
     console.error('Authentication network error:', err);
@@ -1696,7 +1730,7 @@ async function handleForgotPassword(event) {
     if (res.ok) {
       showToastNotification(data.message || `Password recovery instructions sent to ${email}`, 'info');
     } else {
-      showToastNotification(data.detail || 'Could not initiate password recovery.', 'error');
+      showToastNotification(extractErrorMessage(data, 'Could not initiate password recovery.'), 'error');
     }
   } catch (err) {
     showToastNotification('Network error contacting password recovery service.', 'error');
@@ -1762,7 +1796,7 @@ async function handleEmailPasswordLogin(event) {
       showAuthNotification(`Welcome back, ${user.name}`);
     } else {
       const err = await res.json().catch(() => ({}));
-      showToastNotification(err.detail || 'Incorrect institutional email or password.', 'error');
+      showToastNotification(extractErrorMessage(err, 'Incorrect institutional email or password.'), 'error');
     }
   } catch (err) {
     console.error('Email sign-in network error:', err);
@@ -1848,7 +1882,7 @@ async function handleRegister(event) {
       showAuthNotification(`Account created! Welcome, ${user.name}`);
     } else {
       const err = await res.json().catch(() => ({}));
-      showToastNotification(err.detail || 'Registration could not be completed.', 'error');
+      showToastNotification(extractErrorMessage(err, 'Registration could not be completed.'), 'error');
     }
   } catch (err) {
     console.error('Registration network error:', err);

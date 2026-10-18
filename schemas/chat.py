@@ -1,11 +1,25 @@
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from typing import Any, List, Optional
+from pydantic import BaseModel, Field, field_validator
 
 
 class ChatMessage(BaseModel):
     """A single turn in optional conversation history."""
-    role: str = Field(..., pattern="^(user|assistant)$", description="Role: 'user' or 'assistant'")
-    content: str = Field(..., min_length=1, max_length=50000, description="Message text")
+    role: str = Field(default="user", description="Role: 'user' or 'assistant'")
+    content: str = Field(..., max_length=50000, description="Message text")
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, v: Any) -> str:
+        s = str(v or "user").lower().strip()
+        if s in ("user", "human"):
+            return "user"
+        return "assistant"
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def normalize_content(cls, v: Any) -> str:
+        s = str(v or "").strip()
+        return s if s else "..."
 
 
 class ChatRequest(BaseModel):
@@ -24,6 +38,16 @@ class ChatRequest(BaseModel):
         default=None,
         description="Optional persistent conversation session ID for PostgreSQL storage & memory"
     )
+
+    @field_validator("conversation_id", mode="before")
+    @classmethod
+    def sanitize_conversation_id(cls, v: Any) -> Optional[str]:
+        if not v:
+            return None
+        s = str(v).strip()
+        if s.lower() in ("null", "undefined", "none", "", "false"):
+            return None
+        return s
 
 
 class Citation(BaseModel):

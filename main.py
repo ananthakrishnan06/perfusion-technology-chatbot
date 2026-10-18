@@ -87,15 +87,40 @@ async def add_security_and_cache_headers(request: Request, call_next):
     return response
 
 
+from fastapi.exceptions import RequestValidationError
+
 # Global Exception Handlers to prevent internal trace leaks
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    error_messages = []
+    for err in errors:
+        loc = " -> ".join([str(x) for x in err.get("loc", []) if x != "body"])
+        msg = err.get("msg", "Invalid parameter")
+        error_messages.append(f"{loc}: {msg}" if loc else msg)
+    combined = "; ".join(error_messages) or "Invalid request parameters"
+    logger.warning(f"Validation error on {request.method} {request.url.path}: {combined}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": True,
+            "status_code": 422,
+            "message": combined,
+            "detail": combined
+        }
+    )
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    detail_str = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "error": True,
             "status_code": exc.status_code,
-            "message": exc.detail
+            "message": detail_str,
+            "detail": detail_str
         }
     )
 
@@ -108,7 +133,8 @@ async def general_exception_handler(request: Request, exc: Exception):
         content={
             "error": True,
             "status_code": 500,
-            "message": "An internal server error occurred while processing your request."
+            "message": "An internal server error occurred while processing your request.",
+            "detail": "An internal server error occurred while processing your request."
         }
     )
 
