@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download lightweight ONNX model weights into image for instant offline startup
+RUN python -c "from huggingface_hub import hf_hub_download; hf_hub_download('BAAI/bge-small-en-v1.5', 'onnx/model.onnx'); hf_hub_download('BAAI/bge-small-en-v1.5', 'tokenizer.json')"
+
 # Copy codebase and pre-built vector indices
 COPY . .
 
