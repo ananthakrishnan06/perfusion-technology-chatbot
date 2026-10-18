@@ -35,7 +35,37 @@ class Settings(BaseSettings):
             return v.strip().lower() in ("true", "1", "yes", "on", "debug", "dev")
         return False
 
-    # Groq API Configuration
+    # LLM Provider Configuration
+    PRIMARY_LLM_PROVIDER: str = Field(
+        default="gemini",
+        description="Primary LLM provider to use: 'gemini' or 'groq'. Falls back automatically to the other provider on failure."
+    )
+
+    # Google Gemini Configuration (Primary LLM)
+    GEMINI_API_KEY: str = Field(
+        default="",
+        description="API Key for Google Gemini (can also be read from GOOGLE_API_KEY)"
+    )
+    GEMINI_MODEL: str = Field(
+        default="gemini-3.6-flash",
+        description="Primary Google Gemini model (e.g. gemini-3.6-flash, gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash)"
+    )
+    GEMINI_TEMPERATURE: float = Field(default=0.1, ge=0.0, le=2.0)
+    GEMINI_MAX_TOKENS: int = Field(default=4096, ge=1, le=16384)
+    GEMINI_REQUEST_TIMEOUT: float = Field(default=60.0, ge=1.0)
+
+    @field_validator("GEMINI_API_KEY", mode="before")
+    @classmethod
+    def resolve_gemini_api_key(cls, v: Any) -> str:
+        """Resolve GEMINI_API_KEY from environment, falling back to GOOGLE_API_KEY if needed."""
+        if isinstance(v, str) and v.strip() and v.strip() != "your_gemini_api_key_here":
+            return v.strip()
+        google_key = os.getenv("GOOGLE_API_KEY", "").strip()
+        if google_key and google_key != "your_gemini_api_key_here":
+            return google_key
+        return (v or "").strip() if isinstance(v, str) else ""
+
+    # Groq API Configuration (Fallback / Alternative Provider)
     GROQ_API_KEY: str = Field(default="", description="API Key for Groq cloud API")
     GROQ_MODEL: str = Field(
         default="llama-3.1-8b-instant",

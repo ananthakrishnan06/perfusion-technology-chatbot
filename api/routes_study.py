@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from schemas.chat import MCQRequest, MCQResponse
 from services.chat_service import ChatService
 from generation.groq_client import GroqConfigurationError, GroqAPIError
+from generation.gemini_client import GeminiConfigurationError, GeminiAPIError
 from api.dependencies import get_chat_service
 
 router = APIRouter(prefix="/study", tags=["Study & MCQs"])
@@ -27,15 +28,17 @@ def generate_study_mcq(
         if response.insufficient_evidence:
             return response
         return response
-    except GroqConfigurationError as ge:
+    except (GroqConfigurationError, GeminiConfigurationError) as ge:
+        detail_msg = f"Groq API service is not configured: {str(ge)}" if isinstance(ge, GroqConfigurationError) else f"Gemini API service is not configured: {str(ge)}"
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Groq API service is not configured: {str(ge)}"
+            detail=detail_msg
         )
-    except GroqAPIError as ae:
+    except (GroqAPIError, GeminiAPIError) as ae:
+        detail_msg = f"Groq question generation failed: {str(ae)}" if isinstance(ae, GroqAPIError) else f"Gemini question generation failed: {str(ae)}"
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Groq question generation failed: {str(ae)}"
+            detail=detail_msg
         )
     except Exception as e:
         raise HTTPException(

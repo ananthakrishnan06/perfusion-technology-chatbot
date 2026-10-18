@@ -6,6 +6,7 @@ from config import settings
 from schemas.chat import ChatMessage, ChatResponse, Citation, MCQItem, MCQOption, MCQResponse, RetrievalMeta
 from schemas.retrieval import RetrievedChunk
 from generation.groq_client import GroqClientWrapper, GroqError
+from generation.gemini_client import GeminiClientWrapper, GeminiError
 from generation.prompts import build_chat_messages, build_mcq_messages
 from generation.exam_calibrator import detect_exam_marks, get_exam_configuration, ExamConfig
 
@@ -65,8 +66,60 @@ class AnswerGenerator:
     and multiple-choice study question formulation.
     """
 
-    def __init__(self, groq_client: Optional[GroqClientWrapper] = None):
+    def __init__(
+        self,
+        gemini_client: Optional[GeminiClientWrapper] = None,
+        groq_client: Optional[GroqClientWrapper] = None,
+        primary_provider: str = settings.PRIMARY_LLM_PROVIDER
+    ):
+        self.gemini_client = gemini_client or GeminiClientWrapper()
         self.groq_client = groq_client or GroqClientWrapper()
+        self.primary_provider = (primary_provider or "gemini").lower().strip()
+
+    def _generate_completion(
+        self,
+        messages: List[dict],
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        response_format: Optional[dict] = None
+    ) -> str:
+        """
+        Generate chat completion trying the primary provider (Gemini) first,
+        falling back seamlessly to the secondary provider (Groq) on error.
+        """
+        is_gemini_primary = self.primary_provider == "gemini"
+        first_client, first_name = (self.gemini_client, "Gemini") if is_gemini_primary else (self.groq_client, "Groq")
+        second_client, second_name = (self.groq_client, "Groq") if is_gemini_primary else (self.gemini_client, "Gemini")
+
+        try:
+            res = first_client.generate_chat_completion(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                response_format=response_format
+            )
+            logger.info(f"Completion generated successfully via primary provider: {first_name}")
+            return res
+        except Exception as first_err:
+            logger.warning(
+                f"Primary provider '{first_name}' failed: {first_err}. "
+                f"Falling back immediately to secondary provider '{second_name}'."
+            )
+            try:
+                res = second_client.generate_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    response_format=response_format
+                )
+                logger.info(f"Completion generated successfully via fallback provider: {second_name}")
+                return res
+            except Exception as second_err:
+                logger.error(
+                    f"Both LLM providers failed. Primary ({first_name}): {first_err}. "
+                    f"Secondary ({second_name}): {second_err}"
+                )
+                raise second_err from first_err
 
     @staticmethod
     def build_citations_from_chunks(chunks: List[RetrievedChunk], max_citations: int = 5) -> List[Citation]:
@@ -159,7 +212,7 @@ class AnswerGenerator:
         })
 
         try:
-            standalone_query = self.groq_client.generate_chat_completion(
+            standalone_query = self._generate_completion(
                 messages=messages,
                 max_tokens=40,
                 temperature=0.0
@@ -213,14 +266,10 @@ class AnswerGenerator:
 
         max_tokens = exam_config.recommended_max_tokens if exam_config else None
 
-        try:
-            raw_answer = self.groq_client.generate_chat_completion(
-                messages=messages,
-                max_tokens=max_tokens
-            )
-        except GroqError as e:
-            logger.error(f"Groq generation error: {e}")
-            raise
+        raw_answer = self._generate_completion(
+            messages=messages,
+            max_tokens=max_tokens
+        )
 
         # Check if the generated response flagged insufficient evidence
         is_insufficient = (
@@ -254,8 +303,8 @@ class AnswerGenerator:
         exam_config: Optional[ExamConfig] = None
     ):
         """
-        Stream tokens directly from Groq for the given question and retrieved passages.
-        Yields individual token strings in real time for instant UI responsiveness.
+        Stream tokens directly using the primary provider (Gemini),
+        falling back seamlessly to Groq if the primary provider fails before emitting tokens.
         """
         if not retrieved_chunks:
             yield INSUFFICIENT_EVIDENCE_PHRASE
@@ -269,8 +318,34 @@ class AnswerGenerator:
         )
 
         max_tokens = exam_config.recommended_max_tokens if exam_config else None
-        for token in self.groq_client.stream_chat_completion(messages=messages, max_tokens=max_tokens):
-            yield token
+
+        is_gemini_primary = self.primary_provider == "gemini"
+        first_client, first_name = (self.gemini_client, "Gemini") if is_gemini_primary else (self.groq_client, "Groq")
+        second_client, second_name = (self.groq_client, "Groq") if is_gemini_primary else (self.gemini_client, "Gemini")
+
+        tokens_emitted = 0
+        try:
+            for token in first_client.stream_chat_completion(messages=messages, max_tokens=max_tokens):
+                tokens_emitted += 1
+                yield token
+        except Exception as first_err:
+            if tokens_emitted == 0:
+                logger.warning(
+                    f"Primary provider '{first_name}' streaming failed before emitting tokens: {first_err}. "
+                    f"Falling back immediately to secondary provider '{second_name}' stream."
+                )
+                try:
+                    for token in second_client.stream_chat_completion(messages=messages, max_tokens=max_tokens):
+                        yield token
+                except Exception as second_err:
+                    logger.error(
+                        f"Both streaming providers failed. Primary ({first_name}): {first_err}. "
+                        f"Secondary ({second_name}): {second_err}"
+                    )
+                    raise second_err from first_err
+            else:
+                logger.error(f"Streaming error mid-stream from '{first_name}': {first_err}")
+                raise
 
     def generate_mcqs(
         self,
@@ -298,14 +373,10 @@ class AnswerGenerator:
             retrieved_chunks=retrieved_chunks
         )
 
-        try:
-            raw_response = self.groq_client.generate_chat_completion(
-                messages=messages,
-                response_format={"type": "json_object"}
-            )
-        except GroqError as e:
-            logger.error(f"Groq MCQ generation error: {e}")
-            raise
+        raw_response = self._generate_completion(
+            messages=messages,
+            response_format={"type": "json_object"}
+        )
 
         # Parse JSON
         chunk_map = {c.chunk_id: c for c in retrieved_chunks}

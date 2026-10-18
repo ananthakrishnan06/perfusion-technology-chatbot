@@ -7,6 +7,7 @@ from retrieval.keyword_search import BM25KeywordSearch
 from retrieval.reranker import CrossEncoderReranker
 from retrieval.hybrid_search import HybridRetriever
 from generation.groq_client import GroqClientWrapper
+from generation.gemini_client import GeminiClientWrapper
 from generation.answer_generator import AnswerGenerator
 from services.document_service import DocumentService
 from services.retrieval_service import RetrievalService
@@ -29,8 +30,13 @@ class AppContainer:
             embedding_manager=self.embedding_manager,
             reranker=self.reranker
         )
+        self.gemini_client = GeminiClientWrapper()
         self.groq_client = GroqClientWrapper()
-        self.answer_generator = AnswerGenerator(groq_client=self.groq_client)
+        self.answer_generator = AnswerGenerator(
+            gemini_client=self.gemini_client,
+            groq_client=self.groq_client,
+            primary_provider=settings.PRIMARY_LLM_PROVIDER
+        )
         self.document_service = DocumentService(
             metadata_store=self.metadata_store,
             vector_store=self.vector_store,
