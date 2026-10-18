@@ -1,11 +1,14 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from schemas.auth import UserProfile
 from schemas.chat import ChatRequest, ChatResponse
 from services.chat_service import ChatService
 from generation.groq_client import GroqConfigurationError, GroqAPIError
 from generation.gemini_client import GeminiConfigurationError, GeminiAPIError
-from api.dependencies import get_chat_service
+from api.dependencies import get_chat_service, get_optional_current_user
+from storage.db import is_db_configured
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -21,6 +24,7 @@ class TranscribeResponse(BaseModel):
 )
 def ask_question(
     request: ChatRequest,
+    current_user: Optional[UserProfile] = Depends(get_optional_current_user),
     chat_service: ChatService = Depends(get_chat_service)
 ):
     """
@@ -31,7 +35,10 @@ def ask_question(
     and returns verifiable source citations with 1-based original PDF page numbers.
     """
     try:
-        return chat_service.ask_question(request)
+        user_id = current_user.sub if current_user else None
+        return chat_service.ask_question(request, user_id=user_id)
+    except HTTPException:
+        raise
     except (GroqConfigurationError, GeminiConfigurationError) as ge:
         detail_msg = f"Groq API service is not configured: {str(ge)}" if isinstance(ge, GroqConfigurationError) else f"Gemini API service is not configured: {str(ge)}"
         raise HTTPException(
@@ -57,14 +64,30 @@ def ask_question(
 )
 def stream_question(
     request: ChatRequest,
+    current_user: Optional[UserProfile] = Depends(get_optional_current_user),
     chat_service: ChatService = Depends(get_chat_service)
 ):
     """
     Stream tokens in real-time as Server-Sent Events (SSE) for instant UI responsiveness.
     """
+    user_id = current_user.sub if current_user else None
+    conv_id = request.conversation_id
+    if is_db_configured() and conv_id:
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required to access conversation history."
+            )
+        ownership = chat_service.conversation_service.check_conversation_ownership(conv_id, user_id)
+        if ownership == "forbidden":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You do not have permission to access this conversation."
+            )
+
     try:
         return StreamingResponse(
-            chat_service.stream_question(request),
+            chat_service.stream_question(request, user_id=user_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -72,6 +95,8 @@ def stream_question(
                 "X-Accel-Buffering": "no"
             }
         )
+    except HTTPException:
+        raise
     except GroqConfigurationError as ge:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

@@ -54,12 +54,53 @@ def init_db() -> bool:
         Base.metadata.create_all(bind=engine)
 
         # Run lightweight migrations for schema updates
-        from sqlalchemy import text
+        from sqlalchemy import text, inspect
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);"))
-            conn.commit()
+            # 1. users.password_hash
+            try:
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);"))
+                conn.commit()
+            except Exception as e:
+                try:
+                    insp = inspect(engine)
+                    cols = [c["name"] for c in insp.get_columns("users")]
+                    if "password_hash" not in cols:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255);"))
+                        conn.commit()
+                except Exception as ex2:
+                    logger.debug(f"Migration note (users.password_hash): {ex2}")
 
-        logger.info("PostgreSQL tables verified and created successfully.")
+            # 2. conversations.user_id
+            try:
+                conn.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS user_id VARCHAR(100);"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_conversations_user_id ON conversations (user_id);"))
+                conn.commit()
+            except Exception as e:
+                try:
+                    insp = inspect(engine)
+                    cols = [c["name"] for c in insp.get_columns("conversations")]
+                    if "user_id" not in cols:
+                        conn.execute(text("ALTER TABLE conversations ADD COLUMN user_id VARCHAR(100);"))
+                        conn.commit()
+                except Exception as ex2:
+                    logger.debug(f"Migration note (conversations.user_id): {ex2}")
+
+            # 3. memories.user_id
+            try:
+                conn.execute(text("ALTER TABLE memories ADD COLUMN IF NOT EXISTS user_id VARCHAR(100);"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_memories_user_id ON memories (user_id);"))
+                conn.commit()
+            except Exception as e:
+                try:
+                    insp = inspect(engine)
+                    cols = [c["name"] for c in insp.get_columns("memories")]
+                    if "user_id" not in cols:
+                        conn.execute(text("ALTER TABLE memories ADD COLUMN user_id VARCHAR(100);"))
+                        conn.commit()
+                except Exception as ex2:
+                    logger.debug(f"Migration note (memories.user_id): {ex2}")
+
+        logger.info("PostgreSQL tables and schema migrations verified successfully.")
         return True
     except Exception as e:
         logger.error(f"Failed to create PostgreSQL tables: {e}")

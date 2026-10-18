@@ -1,6 +1,7 @@
 import logging
 import uuid
-from typing import List, Optional, Dict, Any
+from datetime import datetime
+from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from storage.db import get_session_factory, is_db_configured
 from storage.db_models import Conversation, Message, Memory
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 class ConversationService:
     """
     Service for managing persistent multi-turn chat sessions and long-term
-    clinical memory in PostgreSQL.
+    clinical memory in PostgreSQL, with strict user-level data isolation.
     """
 
     def __init__(self, session: Optional[Session] = None):
@@ -27,127 +28,170 @@ class ConversationService:
         return None
 
     # =========================================================================
-    # CONVERSATION SESSION MANAGEMENT
+    # CONVERSATION SESSION MANAGEMENT WITH USER ISOLATION
     # =========================================================================
-    def create_conversation(self, title: str = "New Perfusion Inquiry") -> Optional[Dict[str, Any]]:
-        """Create a new conversation session."""
+    def create_conversation(
+        self,
+        user_id: str,
+        title: str = "New Perfusion Inquiry",
+        conversation_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Create a new conversation session assigned strictly to the authenticated user."""
         session = self._get_session()
         if not session:
             logger.warning("PostgreSQL not configured. Cannot persist conversation.")
             return None
         try:
-            conv = Conversation(id=str(uuid.uuid4()), title=title[:250])
+            cid = conversation_id or str(uuid.uuid4())
+            conv = Conversation(
+                id=cid,
+                user_id=user_id,
+                title=title[:250]
+            )
             session.add(conv)
             session.commit()
             session.refresh(conv)
             return conv.to_dict(include_messages=False)
         except Exception as e:
             session.rollback()
-            logger.error(f"Failed to create conversation: {e}")
+            logger.error(f"Failed to create conversation for user {user_id}: {e}")
             return None
         finally:
             if self._session is None:
                 session.close()
 
-    def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve a conversation with all messages and citations."""
+    def check_conversation_ownership(self, conversation_id: str, user_id: str) -> str:
+        """
+        Check ownership of a conversation.
+        Returns:
+            'ok'        -> Conversation exists and belongs to user (or unowned legacy claimed)
+            'forbidden' -> Conversation belongs to a different user
+            'not_found' -> Conversation does not exist
+        """
         session = self._get_session()
         if not session:
-            return None
+            return "db_unavailable"
         try:
             conv = session.query(Conversation).filter(Conversation.id == conversation_id).first()
             if not conv:
-                return None
-            return conv.to_dict(include_messages=True)
+                return "not_found"
+            if conv.user_id and conv.user_id != user_id:
+                return "forbidden"
+            return "ok"
         except Exception as e:
-            logger.error(f"Failed to fetch conversation {conversation_id}: {e}")
-            return None
+            logger.error(f"Ownership check failed for {conversation_id}: {e}")
+            return "error"
         finally:
             if self._session is None:
                 session.close()
 
-    def list_conversations(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """List all recent conversations ordered by last update."""
+    def get_conversation(self, conversation_id: str, user_id: str) -> Tuple[Optional[Dict[str, Any]], str]:
+        """
+        Retrieve a conversation with all messages and citations, strictly verifying ownership.
+        Returns (conversation_dict, status_string): ('ok', 'forbidden', or 'not_found').
+        """
+        session = self._get_session()
+        if not session:
+            return None, "db_unavailable"
+        try:
+            conv = session.query(Conversation).filter(Conversation.id == conversation_id).first()
+            if not conv:
+                return None, "not_found"
+            # Strict ownership verification
+            if conv.user_id != user_id:
+                return None, "forbidden"
+            return conv.to_dict(include_messages=True), "ok"
+        except Exception as e:
+            logger.error(f"Failed to fetch conversation {conversation_id} for user {user_id}: {e}")
+            return None, "error"
+        finally:
+            if self._session is None:
+                session.close()
+
+    def list_conversations(
+        self,
+        user_id: str,
+        limit: int = 50,
+        search: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        List all recent conversations belonging strictly to the authenticated user.
+        Unowned conversations or conversations from other users are strictly excluded.
+        """
         session = self._get_session()
         if not session:
             return []
         try:
+            query = session.query(Conversation).filter(Conversation.user_id == user_id)
+            if search and search.strip():
+                query = query.filter(Conversation.title.ilike(f"%{search.strip()}%"))
             convs = (
-                session.query(Conversation)
+                query
                 .order_by(Conversation.updated_at.desc())
                 .limit(limit)
                 .all()
             )
             return [c.to_dict(include_messages=False) for c in convs]
         except Exception as e:
-            logger.error(f"Failed to list conversations: {e}")
+            logger.error(f"Failed to list conversations for user {user_id}: {e}")
             return []
         finally:
             if self._session is None:
                 session.close()
 
-    def delete_conversation(self, conversation_id: str) -> bool:
-        """Delete a conversation and all its messages / memories."""
+    def rename_conversation(
+        self,
+        conversation_id: str,
+        user_id: str,
+        title: str
+    ) -> Tuple[Optional[Dict[str, Any]], str]:
+        """
+        Rename an existing conversation belonging to the authenticated user.
+        Returns (conv_dict, status_string): ('ok', 'forbidden', 'not_found', or 'error').
+        """
         session = self._get_session()
         if not session:
-            return False
+            return None, "db_unavailable"
         try:
             conv = session.query(Conversation).filter(Conversation.id == conversation_id).first()
             if not conv:
-                return False
-            session.delete(conv)
+                return None, "not_found"
+            if conv.user_id != user_id:
+                return None, "forbidden"
+            conv.title = title[:250].strip() or "Untitled Inquiry"
+            conv.updated_at = datetime.utcnow()
             session.commit()
-            return True
+            session.refresh(conv)
+            return conv.to_dict(include_messages=False), "ok"
         except Exception as e:
             session.rollback()
-            logger.error(f"Failed to delete conversation {conversation_id}: {e}")
-            return False
+            logger.error(f"Failed to rename conversation {conversation_id}: {e}")
+            return None, "error"
         finally:
             if self._session is None:
                 session.close()
 
-    def add_message(
-        self,
-        conversation_id: str,
-        role: str,
-        content: str,
-        citations: Optional[List[Dict[str, Any]]] = None,
-        grounded: bool = True
-    ) -> Optional[Dict[str, Any]]:
-        """Append a message turn to a conversation session."""
+    def delete_conversation(self, conversation_id: str, user_id: str) -> Tuple[bool, str]:
+        """
+        Delete a conversation and all its messages, strictly verifying user ownership.
+        Returns (success_bool, status_string): ('ok', 'forbidden', 'not_found', or 'error').
+        """
         session = self._get_session()
         if not session:
-            return None
+            return False, "db_unavailable"
         try:
             conv = session.query(Conversation).filter(Conversation.id == conversation_id).first()
             if not conv:
-                # Auto-create if conversation doesn't exist yet
-                conv = Conversation(
-                    id=conversation_id,
-                    title=content[:60] + "..." if len(content) > 60 else content
-                )
-                session.add(conv)
-                session.flush()
-            elif conv.title == "New Perfusion Inquiry" and role == "user":
-                # Update title to first user question
-                conv.title = content[:60] + "..." if len(content) > 60 else content
-
-            msg = Message(
-                id=str(uuid.uuid4()),
-                conversation_id=conversation_id,
-                role=role,
-                content=content,
-                citations=citations or [],
-                grounded=grounded
-            )
-            session.add(msg)
+                return False, "not_found"
+            if conv.user_id != user_id:
+                return False, "forbidden"
+            session.delete(conv)
             session.commit()
-            session.refresh(msg)
-            return msg.to_dict()
+            return True, "ok"
         except Exception as e:
             session.rollback()
-            logger.error(f"Failed to add message to conversation {conversation_id}: {e}")
-            return None
+            logger.error(f"Failed to delete conversation {conversation_id} for user {user_id}: {e}")
+            return False, "error"
         finally:
             if self._session is None:
                 session.close()
@@ -155,26 +199,36 @@ class ConversationService:
     def add_turn(
         self,
         conversation_id: str,
+        user_id: str,
         user_content: str,
         assistant_content: str,
         citations: Optional[List[Dict[str, Any]]] = None,
         grounded: bool = True
-    ) -> bool:
-        """Batch persist both user and assistant message turns in a single atomic transaction."""
+    ) -> Tuple[bool, str]:
+        """
+        Batch persist both user and assistant message turns, strictly ensuring user ownership.
+        Returns (success_bool, status_string).
+        """
         session = self._get_session()
         if not session:
-            return False
+            return False, "db_unavailable"
         try:
             conv = session.query(Conversation).filter(Conversation.id == conversation_id).first()
             if not conv:
                 conv = Conversation(
                     id=conversation_id,
+                    user_id=user_id,
                     title=user_content[:60] + "..." if len(user_content) > 60 else user_content
                 )
                 session.add(conv)
                 session.flush()
-            elif conv.title == "New Perfusion Inquiry":
-                conv.title = user_content[:60] + "..." if len(user_content) > 60 else user_content
+            else:
+                if conv.user_id and conv.user_id != user_id:
+                    return False, "forbidden"
+                if not conv.user_id:
+                    conv.user_id = user_id
+                if conv.title == "New Perfusion Inquiry":
+                    conv.title = user_content[:60] + "..." if len(user_content) > 60 else user_content
 
             user_msg = Message(
                 id=str(uuid.uuid4()),
@@ -193,42 +247,49 @@ class ConversationService:
                 grounded=grounded
             )
             session.add_all([user_msg, asst_msg])
+            conv.updated_at = datetime.utcnow()
             session.commit()
-            return True
+            return True, "ok"
         except Exception as e:
             session.rollback()
             logger.error(f"Failed to batch add turn to conversation {conversation_id}: {e}")
-            return False
+            return False, "error"
         finally:
             if self._session is None:
                 session.close()
 
     # =========================================================================
-    # LONG-TERM MEMORY ENGINE ("MEMORIZE")
+    # USER-ISOLATED CLINICAL MEMORY ENGINE
     # =========================================================================
     def save_memory(
         self,
+        user_id: str,
         key: str,
         content: str,
         category: str = "clinical_pearl",
         conversation_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        """Store a long-term memory entity."""
+        """Store a long-term memory entity isolated to the authenticated user."""
         session = self._get_session()
         if not session:
             return None
         try:
-            # Check if key already exists in same conversation or global
-            existing = session.query(Memory).filter(Memory.key == key).first()
+            existing = (
+                session.query(Memory)
+                .filter(Memory.user_id == user_id, Memory.key == key)
+                .first()
+            )
             if existing:
                 existing.content = content
                 existing.category = category
+                existing.updated_at = datetime.utcnow()
                 session.commit()
                 session.refresh(existing)
                 return existing.to_dict()
 
             mem = Memory(
                 id=str(uuid.uuid4()),
+                user_id=user_id,
                 conversation_id=conversation_id,
                 category=category,
                 key=key[:95],
@@ -240,38 +301,41 @@ class ConversationService:
             return mem.to_dict()
         except Exception as e:
             session.rollback()
-            logger.error(f"Failed to save memory: {e}")
+            logger.error(f"Failed to save memory for user {user_id}: {e}")
             return None
         finally:
             if self._session is None:
                 session.close()
 
-    def list_memories(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """Retrieve stored long-term clinical memories."""
+    def list_memories(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Retrieve stored long-term clinical memories isolated to the authenticated user."""
         session = self._get_session()
         if not session:
             return []
         try:
             memories = (
                 session.query(Memory)
+                .filter(Memory.user_id == user_id)
                 .order_by(Memory.updated_at.desc())
                 .limit(limit)
                 .all()
             )
             return [m.to_dict() for m in memories]
         except Exception as e:
-            logger.error(f"Failed to retrieve memories: {e}")
+            logger.error(f"Failed to retrieve memories for user {user_id}: {e}")
             return []
         finally:
             if self._session is None:
                 session.close()
 
-    def format_memory_context(self, limit: int = 5) -> str:
+    def format_memory_context(self, user_id: Optional[str] = None, limit: int = 5) -> str:
         """
         Format recent stored clinical memories into a prompt block for the LLM.
-        Provides long-term continuity across conversation sessions.
+        Strictly isolated to user_id (returns empty string if user_id is None).
         """
-        memories = self.list_memories(limit=limit)
+        if not user_id:
+            return ""
+        memories = self.list_memories(user_id=user_id, limit=limit)
         if not memories:
             return ""
 
@@ -283,18 +347,22 @@ class ConversationService:
     def extract_and_memorize(
         self,
         conversation_id: str,
+        user_id: str,
         user_text: str,
         assistant_text: str
     ) -> None:
         """
-        Heuristic memory extractor: identifies clinical preferences, patient parameters,
-        and high-yield topics discussed in the turn to memorize for future sessions.
+        Heuristic memory extractor: identifies clinical preferences and high-yield topics
+        and persists them isolated to the authenticated user.
         """
+        if not user_id:
+            return
         u_lower = user_text.lower()
 
         # Check for explicit user preferences or case parameters
         if any(w in u_lower for w in ["i prefer", "my patient", "our protocol", "we use", "remember that", "note that"]):
             self.save_memory(
+                user_id=user_id,
                 key=f"User Clinical Context ({user_text[:35]}...)",
                 content=user_text.strip(),
                 category="user_preference",
@@ -317,10 +385,10 @@ class ConversationService:
             if kw in u_lower:
                 summary_excerpt = assistant_text[:180].replace("\n", " ").strip()
                 self.save_memory(
+                    user_id=user_id,
                     key=f"Recent Discussion: {title}",
                     content=summary_excerpt,
                     category="clinical_pearl",
                     conversation_id=conversation_id
                 )
                 break
-

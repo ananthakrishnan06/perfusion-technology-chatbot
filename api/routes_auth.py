@@ -10,7 +10,7 @@ import logging
 import time
 from typing import Optional
 from urllib.parse import urlencode
-from fastapi import APIRouter, HTTPException, Header, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
 from fastapi.responses import RedirectResponse
 import httpx
 from config import settings
@@ -445,19 +445,16 @@ def _persist_user_to_db(profile: UserProfile):
         logger.warning(f"Note on user persistence to PostgreSQL: {e}")
 
 
-@router.get("/me", response_model=UserProfile)
-async def get_current_user(authorization: Optional[str] = Header(None)):
+async def resolve_user_from_token(token: str) -> Optional[UserProfile]:
     """
-    Retrieve current authenticated user profile from Authorization header.
-    Validates token against Supabase Auth API, in-memory cache, or signed session store.
+    Resolve a UserProfile from a token by checking:
+    1. Active in-memory session cache
+    2. Supabase Auth API
+    3. Tamper-proof signed local HMAC session tokens
     """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated."
-        )
-
-    token = authorization.replace("Bearer ", "").strip()
+    if not token or not token.strip():
+        return None
+    token = token.strip()
 
     # 1. Check in-memory cache
     if token in ACTIVE_SESSIONS:
@@ -465,27 +462,30 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
 
     # 2. Check Supabase token validity
     if is_supabase_configured():
-        status_code, resp_data = await supabase_request("GET", "/user", bearer_token=token)
-        if status_code == 200:
-            sub = resp_data.get("id")
-            email = resp_data.get("email")
-            meta = resp_data.get("user_metadata") or {}
-            name = meta.get("name") or meta.get("full_name") or (email.split("@")[0].replace(".", " ").title() if email else "Clinician")
-            picture = meta.get("avatar_url") or meta.get("picture")
-            role = meta.get("role") or "Clinical Perfusionist"
+        try:
+            status_code, resp_data = await supabase_request("GET", "/user", bearer_token=token)
+            if status_code == 200:
+                sub = resp_data.get("id")
+                email = resp_data.get("email")
+                meta = resp_data.get("user_metadata") or {}
+                name = meta.get("name") or meta.get("full_name") or (email.split("@")[0].replace(".", " ").title() if email else "Clinician")
+                picture = meta.get("avatar_url") or meta.get("picture")
+                role = meta.get("role") or "Clinical Perfusionist"
 
-            profile = UserProfile(
-                sub=sub,
-                email=email,
-                name=name,
-                picture=picture,
-                role=role,
-                authenticated=True,
-                token=token
-            )
-            ACTIVE_SESSIONS[token] = profile
-            _persist_user_to_db(profile)
-            return profile
+                profile = UserProfile(
+                    sub=sub,
+                    email=email,
+                    name=name,
+                    picture=picture,
+                    role=role,
+                    authenticated=True,
+                    token=token
+                )
+                ACTIVE_SESSIONS[token] = profile
+                _persist_user_to_db(profile)
+                return profile
+        except Exception as e:
+            logger.debug(f"Supabase token lookup note: {e}")
 
     # 3. Check local signed session token
     if verify_session_token(token):
@@ -526,10 +526,57 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
         except Exception:
             pass
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired session token."
-    )
+    return None
+
+
+async def get_current_user(authorization: Optional[str] = Header(None)) -> UserProfile:
+    """
+    FastAPI dependency that enforces verified user authentication.
+    Returns the authenticated UserProfile (with stable UID `sub`).
+    Raises HTTP 401 if token is missing, invalid, or expired.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please sign in to access your chat sessions."
+        )
+
+    token = authorization.replace("Bearer ", "").strip()
+    user = await resolve_user_from_token(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token."
+        )
+    return user
+
+
+async def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Optional[UserProfile]:
+    """
+    FastAPI dependency for endpoints supporting both authenticated users and guest access.
+    Returns UserProfile if valid Bearer token provided, None if no Authorization header is present,
+    or raises HTTP 401 if a token was supplied but is invalid/expired.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+
+    token = authorization.replace("Bearer ", "").strip()
+    user = await resolve_user_from_token(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token."
+        )
+    return user
+
+
+@router.get("/me", response_model=UserProfile)
+async def me_endpoint(current_user: UserProfile = Depends(get_current_user)):
+    """
+    Retrieve current authenticated user profile from Authorization header.
+    Validates token against Supabase Auth API, in-memory cache, or signed session store.
+    """
+    return current_user
 
 
 @router.post("/logout")

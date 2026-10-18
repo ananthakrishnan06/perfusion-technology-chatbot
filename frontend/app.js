@@ -1,6 +1,11 @@
 // Perfusion AI - Client Application Controller
 // Cardiovascular Decision Support & Knowledge Workspace
 
+const initialUser = JSON.parse(localStorage.getItem('perfusion_user') || 'null');
+const initialConvId = (initialUser && initialUser.sub)
+  ? (localStorage.getItem(`perfusion_current_conv_id_${initialUser.sub}`) || null)
+  : (localStorage.getItem('perfusion_current_conv_id') || null);
+
 const state = {
   activeView: 'home',
   selectedDepth: 'detailed',
@@ -13,10 +18,62 @@ const state = {
   isQuerying: false,
   activeDocId: null,
   activeDocName: null,
-  currentConversationId: localStorage.getItem('perfusion_current_conv_id') || null,
-  user: JSON.parse(localStorage.getItem('perfusion_user') || 'null'),
+  currentConversationId: initialConvId,
+  user: initialUser,
   authConfig: { google_client_id: '', enabled: false, mode: 'setup_required' },
 };
+
+function getAuthHeaders(extraHeaders = {}) {
+  const headers = { ...extraHeaders };
+  if (state.user && state.user.token) {
+    headers['Authorization'] = `Bearer ${state.user.token}`;
+  }
+  return headers;
+}
+
+let conversationFetchSeq = 0;
+
+function setAuthenticatedUser(newUser) {
+  if (!newUser || !newUser.sub) return;
+  const previousSub = state.user ? state.user.sub : null;
+  const isDifferentUser = previousSub && previousSub !== newUser.sub;
+
+  state.user = newUser;
+  localStorage.setItem('perfusion_user', JSON.stringify(newUser));
+
+  if (isDifferentUser) {
+    // Clear in-memory & DOM state from previous account
+    state.currentConversationId = null;
+    state.chatHistory = [];
+    clearChat(false);
+  }
+
+  // Restore user-scoped conversation ID
+  const userKey = `perfusion_current_conv_id_${newUser.sub}`;
+  state.currentConversationId = localStorage.getItem(userKey) || null;
+
+  renderAuthUI();
+  bypassLoginToGuest();
+  loadConversationsList();
+}
+
+function clearAuthenticatedUser() {
+  conversationFetchSeq++;
+
+  localStorage.removeItem('perfusion_user');
+  localStorage.removeItem('perfusion_current_conv_id');
+  if (state.user && state.user.sub) {
+    localStorage.removeItem(`perfusion_current_conv_id_${state.user.sub}`);
+  }
+
+  state.user = null;
+  state.currentConversationId = null;
+  state.chatHistory = [];
+
+  clearChat(false);
+  loadConversationsList();
+  renderAuthUI();
+}
 
 // Dynamic API Endpoint Resolver (supports Vercel proxy rewrite & direct Azure App Service routing)
 function apiEndpoint(path) {
@@ -71,10 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
     .then(r => r.json())
     .then(user => {
       if (user && user.authenticated) {
-        state.user = user;
-        localStorage.setItem('perfusion_user', JSON.stringify(user));
-        renderAuthUI();
-        bypassLoginToGuest();
+        setAuthenticatedUser(user);
         showAuthNotification(`Signed in with Google as ${user.name}`);
       }
     })
@@ -857,7 +911,8 @@ async function sendChatMessage() {
               if (eventData.type === 'meta') {
                 if (eventData.conversation_id) {
                   state.currentConversationId = eventData.conversation_id;
-                  localStorage.setItem('perfusion_current_conv_id', eventData.conversation_id);
+                  const storageKey = (state.user && state.user.sub) ? `perfusion_current_conv_id_${state.user.sub}` : 'perfusion_current_conv_id';
+                  localStorage.setItem(storageKey, eventData.conversation_id);
                 }
                 if (eventData.exam_marks && badgeEl) {
                   badgeEl.className = 'text-[9px] font-mono-code bg-amber-100 text-amber-900 font-semibold px-2 py-0.5 rounded-full border border-amber-300 shadow-xs';
@@ -871,6 +926,7 @@ async function sendChatMessage() {
                 streamedAnswer = eventData.answer || streamedAnswer;
                 proseDiv.innerHTML = window.marked ? marked.parse(streamedAnswer) : streamedAnswer;
                 scrollChatToBottom();
+                loadConversationsList();
               }
             } catch (e) {
               // Ignore single malformed chunk
@@ -908,7 +964,9 @@ async function sendChatMessage() {
       const data = await response.json();
       if (data.conversation_id) {
         state.currentConversationId = data.conversation_id;
-        localStorage.setItem('perfusion_current_conv_id', data.conversation_id);
+        const storageKey = (state.user && state.user.sub) ? `perfusion_current_conv_id_${state.user.sub}` : 'perfusion_current_conv_id';
+        localStorage.setItem(storageKey, data.conversation_id);
+        loadConversationsList();
       }
       typingIndicator.remove();
       assistantMsgEl.innerHTML = `
@@ -986,6 +1044,9 @@ async function clearChat(confirmFirst = true) {
   state.activeDocName = null;
   state.currentConversationId = null;
   localStorage.removeItem('perfusion_current_conv_id');
+  if (state.user && state.user.sub) {
+    localStorage.removeItem(`perfusion_current_conv_id_${state.user.sub}`);
+  }
 
   const sub = document.getElementById('chat-session-subtitle');
   if (sub) {
@@ -1462,10 +1523,7 @@ async function syncSupabaseSession(accessToken) {
     });
     if (res.ok) {
       const user = await res.json();
-      state.user = user;
-      localStorage.setItem('perfusion_user', JSON.stringify(user));
-      renderAuthUI();
-      bypassLoginToGuest();
+      setAuthenticatedUser(user);
       showAuthNotification(`Signed in as ${user.name}`);
       // Clean up URL hash if returned from OAuth redirect
       if (window.location.hash && (window.location.hash.includes('access_token') || window.location.hash.includes('type='))) {
@@ -1642,11 +1700,8 @@ async function handleGoogleCredentialResponse(response) {
 
     if (res.ok) {
       const user = await res.json();
-      state.user = user;
-      localStorage.setItem('perfusion_user', JSON.stringify(user));
-      renderAuthUI();
+      setAuthenticatedUser(user);
       closeGoogleAuthModal();
-      bypassLoginToGuest();
       showAuthNotification(`Signed in as ${user.name}`);
     } else {
       const err = await res.json().catch(() => ({}));
@@ -1789,10 +1844,7 @@ async function handleEmailPasswordLogin(event) {
 
     if (res.ok) {
       const user = await res.json();
-      state.user = user;
-      localStorage.setItem('perfusion_user', JSON.stringify(user));
-      renderAuthUI();
-      bypassLoginToGuest();
+      setAuthenticatedUser(user);
       showAuthNotification(`Welcome back, ${user.name}`);
     } else {
       const err = await res.json().catch(() => ({}));
@@ -1875,10 +1927,7 @@ async function handleRegister(event) {
 
     if (res.ok) {
       const user = await res.json();
-      state.user = user;
-      localStorage.setItem('perfusion_user', JSON.stringify(user));
-      renderAuthUI();
-      bypassLoginToGuest();
+      setAuthenticatedUser(user);
       showAuthNotification(`Account created! Welcome, ${user.name}`);
     } else {
       const err = await res.json().catch(() => ({}));
@@ -1984,9 +2033,7 @@ async function handleSignOut() {
     console.debug('Logout request completed', e);
   }
 
-  localStorage.removeItem('perfusion_user');
-  state.user = null;
-  renderAuthUI();
+  clearAuthenticatedUser();
 
   if (window.google && google.accounts && google.accounts.id) {
     google.accounts.id.disableAutoSelect();
@@ -2149,16 +2196,52 @@ async function loadConversationsList() {
   const container = document.getElementById('conversations-list-container');
   if (!container) return;
 
+  const currentSeq = ++conversationFetchSeq;
+  const currentSub = state.user ? state.user.sub : null;
+
+  if (!state.user || !state.user.token) {
+    container.innerHTML = `
+      <div class="py-8 text-center text-xs text-neutral-400 font-mono-code space-y-2">
+        <i data-lucide="lock" class="w-6 h-6 mx-auto text-neutral-300"></i>
+        <p class="font-medium text-neutral-600">Authentication Required</p>
+        <p class="text-[10px] text-neutral-400">Sign in with Google to view and sync your private chat history.</p>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
   container.innerHTML = `
     <div class="py-6 text-center text-xs text-neutral-400 font-mono-code flex items-center justify-center space-x-2">
       <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-      <span>Loading past conversations...</span>
+      <span>Loading your conversations...</span>
     </div>
   `;
 
   try {
-    const res = await fetch(apiEndpoint('/api/v1/conversations'));
+    const res = await fetch(apiEndpoint('/api/v1/conversations'), {
+      headers: getAuthHeaders()
+    });
+
+    if (currentSeq !== conversationFetchSeq || !state.user || state.user.sub !== currentSub) {
+      return;
+    }
+
+    if (res.status === 401) {
+      container.innerHTML = `
+        <div class="py-8 text-center text-xs text-neutral-400 font-mono-code space-y-1">
+          <i data-lucide="lock" class="w-6 h-6 mx-auto text-neutral-300"></i>
+          <p>Session expired. Please sign in again.</p>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons();
+      return;
+    }
+
     const data = await res.json();
+    if (currentSeq !== conversationFetchSeq || !state.user || state.user.sub !== currentSub) {
+      return;
+    }
 
     if (data.status === 'database_not_configured') {
       container.innerHTML = `
@@ -2227,6 +2310,7 @@ async function loadConversationsList() {
 
     if (window.lucide) lucide.createIcons();
   } catch (err) {
+    if (currentSeq !== conversationFetchSeq) return;
     container.innerHTML = `
       <div class="p-3 text-xs text-rose-600 font-mono-code">
         Error loading conversations: ${err.message}
@@ -2278,12 +2362,23 @@ async function loadConversationSession(convId, autoClose = true, autoSwitch = tr
       `;
     }
 
-    const res = await fetch(apiEndpoint(`/api/v1/conversations/${convId}`));
-    if (res.status === 404) {
-      // Clean up stale or deleted conversation ID
+    const res = await fetch(apiEndpoint(`/api/v1/conversations/${convId}`), {
+      headers: getAuthHeaders()
+    });
+    if (res.status === 401 || res.status === 403 || res.status === 404) {
+      // Clean up stale or inaccessible conversation ID
       localStorage.removeItem('perfusion_current_conv_id');
+      if (state.user && state.user.sub) {
+        localStorage.removeItem(`perfusion_current_conv_id_${state.user.sub}`);
+      }
       if (state.currentConversationId === convId) {
         state.currentConversationId = null;
+      }
+      if (res.status === 403) {
+        showToastNotification('You do not have permission to access this conversation.', 'error');
+        clearChat(false);
+      } else if (res.status === 401) {
+        showToastNotification('Please sign in to access your saved conversations.', 'error');
       }
       return;
     }
@@ -2291,7 +2386,8 @@ async function loadConversationSession(convId, autoClose = true, autoSwitch = tr
     const conv = await res.json();
 
     state.currentConversationId = conv.id;
-    localStorage.setItem('perfusion_current_conv_id', conv.id);
+    const storageKey = (state.user && state.user.sub) ? `perfusion_current_conv_id_${state.user.sub}` : 'perfusion_current_conv_id';
+    localStorage.setItem(storageKey, conv.id);
     state.chatHistory = [];
 
     const sub = document.getElementById('chat-session-subtitle');
@@ -2396,7 +2492,16 @@ async function deleteConversationSession(convId, event) {
           delBtn.innerHTML = '<div class="inline-block animate-spin w-3.5 h-3.5 border-2 border-rose-600 border-t-transparent rounded-full"></div>';
         }
 
-        const res = await fetch(apiEndpoint(`/api/v1/conversations/${convId}`), { method: 'DELETE' });
+        const res = await fetch(apiEndpoint(`/api/v1/conversations/${convId}`), {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        if (res.status === 403) {
+          throw new Error('Unauthorized: You do not own this conversation.');
+        }
+        if (res.status === 401) {
+          throw new Error('Please sign in to delete conversations.');
+        }
         if (!res.ok) throw new Error('Delete failed on server.');
 
         if (state.currentConversationId === convId) {

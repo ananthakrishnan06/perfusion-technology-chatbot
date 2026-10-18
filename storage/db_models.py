@@ -38,11 +38,13 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(100), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String(255), nullable=False, default="New Perfusion Inquiry")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
+    user = relationship("User", backref="conversations")
     messages = relationship(
         "Message",
         back_populates="conversation",
@@ -58,6 +60,7 @@ class Conversation(Base):
     def to_dict(self, include_messages: bool = False):
         data = {
             "id": self.id,
+            "user_id": self.user_id,
             "title": self.title,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -109,6 +112,7 @@ class Memory(Base):
     __tablename__ = "memories"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(100), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     conversation_id = Column(
         String(36),
         ForeignKey("conversations.id", ondelete="CASCADE"),
@@ -122,11 +126,13 @@ class Memory(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
+    user = relationship("User", backref="memories")
     conversation = relationship("Conversation", back_populates="memories")
 
     def to_dict(self):
         return {
             "id": self.id,
+            "user_id": self.user_id,
             "conversation_id": self.conversation_id,
             "category": self.category,
             "key": self.key,

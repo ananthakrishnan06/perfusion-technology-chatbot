@@ -3,6 +3,7 @@ import logging
 import re
 import threading
 from typing import List, Optional
+from fastapi import HTTPException, status
 from config import settings
 from schemas.chat import ChatMessage, ChatRequest, ChatResponse, MCQRequest, MCQResponse, RetrievalMeta
 from retrieval.hybrid_search import HybridRetriever
@@ -62,7 +63,7 @@ class ChatService:
 
         return matched_doc_ids if matched_doc_ids else None
 
-    def ask_question(self, request: ChatRequest) -> ChatResponse:
+    def ask_question(self, request: ChatRequest, user_id: Optional[str] = None) -> ChatResponse:
         """
         Retrieve relevant evidence and generate an evidence-grounded answer using Groq.
         Persists turns and memorizes clinical facts in PostgreSQL when configured.
@@ -92,15 +93,32 @@ class ChatService:
         conv_id = request.conversation_id
         memory_context = ""
         if is_db_configured():
-            try:
-                memory_context = self.conversation_service.format_memory_context(limit=5)
-                if not conv_id:
+            if conv_id:
+                if not user_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Authentication required to access conversation history."
+                    )
+                ownership = self.conversation_service.check_conversation_ownership(conv_id, user_id)
+                if ownership == "forbidden":
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Access denied: You do not have permission to access this conversation."
+                    )
+            elif user_id:
+                try:
                     clean_title = clean_q.split("\n")[0][:60].strip() or "Clinical Inquiry"
-                    created = self.conversation_service.create_conversation(title=clean_title)
+                    created = self.conversation_service.create_conversation(user_id=user_id, title=clean_title)
                     if created:
                         conv_id = created["id"]
-            except Exception as e:
-                logger.warning(f"PostgreSQL memory lookup note: {e}")
+                except Exception as e:
+                    logger.warning(f"PostgreSQL conversation creation note: {e}")
+
+            if user_id:
+                try:
+                    memory_context = self.conversation_service.format_memory_context(user_id=user_id, limit=5)
+                except Exception as e:
+                    logger.warning(f"PostgreSQL memory lookup note: {e}")
 
         # Quick friendly handling for greetings / identity questions
         normalized = clean_q.lower().strip().rstrip("!?.,")
@@ -120,10 +138,11 @@ class ChatService:
                 exam_marks=exam_config.marks if exam_config else None,
                 target_words=exam_config.target_words if exam_config else None
             )
-            if is_db_configured() and conv_id:
+            if is_db_configured() and conv_id and user_id:
                 try:
                     self.conversation_service.add_turn(
                         conversation_id=conv_id,
+                        user_id=user_id,
                         user_content=clean_q,
                         assistant_content=greeting_reply,
                         citations=[],
@@ -199,12 +218,13 @@ class ChatService:
             chat_response.target_words = exam_config.target_words
 
         # 7. Persist conversation turn and extract clinical memories into PostgreSQL
-        if is_db_configured() and conv_id:
+        if is_db_configured() and conv_id and user_id:
             try:
                 import threading
                 citations_dump = [c.model_dump() if hasattr(c, "model_dump") else c.dict() for c in chat_response.citations]
                 self.conversation_service.add_turn(
                     conversation_id=conv_id,
+                    user_id=user_id,
                     user_content=clean_q,
                     assistant_content=chat_response.answer,
                     citations=citations_dump,
@@ -213,7 +233,7 @@ class ChatService:
                 # Run memory extraction in a lightweight background thread to avoid delaying response delivery
                 threading.Thread(
                     target=self.conversation_service.extract_and_memorize,
-                    args=(conv_id, clean_q, chat_response.answer),
+                    args=(conv_id, user_id, clean_q, chat_response.answer),
                     daemon=True
                 ).start()
             except Exception as e:
@@ -239,7 +259,7 @@ class ChatService:
             retrieved_chunks=retrieved_chunks
         )
 
-    def stream_question(self, request: ChatRequest):
+    def stream_question(self, request: ChatRequest, user_id: Optional[str] = None):
         """
         Stream an evidence-grounded answer as Server-Sent Events (SSE).
         Emits metadata, tokens in real time, and persists the turn on completion.
@@ -263,15 +283,32 @@ class ChatService:
         conv_id = request.conversation_id
         memory_context = ""
         if is_db_configured():
-            try:
-                memory_context = self.conversation_service.format_memory_context(limit=5)
-                if not conv_id:
+            if conv_id:
+                if not user_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Authentication required to access conversation history."
+                    )
+                ownership = self.conversation_service.check_conversation_ownership(conv_id, user_id)
+                if ownership == "forbidden":
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Access denied: You do not have permission to access this conversation."
+                    )
+            elif user_id:
+                try:
                     clean_title = clean_q.split("\n")[0][:60].strip() or "Clinical Inquiry"
-                    created = self.conversation_service.create_conversation(title=clean_title)
+                    created = self.conversation_service.create_conversation(user_id=user_id, title=clean_title)
                     if created:
                         conv_id = created["id"]
-            except Exception as e:
-                logger.warning(f"PostgreSQL memory lookup note: {e}")
+                except Exception as e:
+                    logger.warning(f"PostgreSQL conversation creation note: {e}")
+
+            if user_id:
+                try:
+                    memory_context = self.conversation_service.format_memory_context(user_id=user_id, limit=5)
+                except Exception as e:
+                    logger.warning(f"PostgreSQL memory lookup note: {e}")
 
         # Quick friendly handling for greetings / identity questions
         normalized = clean_q.lower().strip().rstrip("!?.,")
@@ -292,10 +329,11 @@ class ChatService:
             yield f"data: {json.dumps({'type': 'token', 'content': greeting_reply})}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'answer': greeting_reply})}\n\n"
 
-            if is_db_configured() and conv_id:
+            if is_db_configured() and conv_id and user_id:
                 try:
                     self.conversation_service.add_turn(
                         conversation_id=conv_id,
+                        user_id=user_id,
                         user_content=clean_q,
                         assistant_content=greeting_reply,
                         citations=[],
@@ -373,11 +411,12 @@ class ChatService:
         yield f"data: {json.dumps({'type': 'done', 'answer': cleaned_answer})}\n\n"
 
         # Background async persistence to PostgreSQL
-        if is_db_configured() and conv_id:
+        if is_db_configured() and conv_id and user_id:
             try:
                 citations_dump = [c.model_dump() if hasattr(c, "model_dump") else c.dict() for c in self.answer_generator.build_citations_from_chunks(retrieved_chunks)]
                 self.conversation_service.add_turn(
                     conversation_id=conv_id,
+                    user_id=user_id,
                     user_content=clean_q,
                     assistant_content=cleaned_answer,
                     citations=citations_dump,
@@ -385,7 +424,7 @@ class ChatService:
                 )
                 threading.Thread(
                     target=self.conversation_service.extract_and_memorize,
-                    args=(conv_id, clean_q, cleaned_answer),
+                    args=(conv_id, user_id, clean_q, cleaned_answer),
                     daemon=True
                 ).start()
             except Exception as e:
