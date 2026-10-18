@@ -127,10 +127,35 @@ function setupKeyboardShortcuts() {
 }
 
 // ==========================================
-// 2. NAVIGATION & VIEW SWITCHING
 // ==========================================
+// 2. NAVIGATION & VIEW SWITCHING (DESKTOP + MOBILE)
+// ==========================================
+function toggleMobileSidebar() {
+  const sidebar = document.getElementById('app-sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (!sidebar) return;
+  const isClosed = sidebar.classList.contains('-translate-x-full');
+  if (isClosed) {
+    sidebar.classList.remove('-translate-x-full');
+    if (backdrop) backdrop.classList.remove('hidden');
+    closeConversationsDrawer();
+    closeCitationDrawer();
+  } else {
+    sidebar.classList.add('-translate-x-full');
+    if (backdrop) backdrop.classList.add('hidden');
+  }
+}
+
+function closeMobileSidebar() {
+  const sidebar = document.getElementById('app-sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (sidebar) sidebar.classList.add('-translate-x-full');
+  if (backdrop) backdrop.classList.add('hidden');
+}
+
 function switchView(viewName) {
   state.activeView = viewName;
+  closeMobileSidebar();
 
   const contentScrollArea = document.getElementById('content-scroll-area');
   const viewChat = document.getElementById('view-chat');
@@ -155,7 +180,7 @@ function switchView(viewName) {
     });
   }
 
-  // Nav buttons
+  // Desktop Sidebar Nav buttons
   const navBtns = {
     home: document.getElementById('nav-home'),
     chat: document.getElementById('nav-chat'),
@@ -175,6 +200,36 @@ function switchView(viewName) {
     } else {
       btn.classList.remove(...activeClasses);
       btn.classList.add(...inactiveClasses);
+    }
+  });
+
+  // Mobile Header Title Sync
+  const mobileTitles = {
+    home: 'Perfusion AI',
+    chat: 'Ask Perfusion AI',
+    library: 'Knowledge Library',
+    calculators: 'Calculators',
+    cases: 'Exam MCQs'
+  };
+  const mobileTitleEl = document.getElementById('mobile-header-title');
+  if (mobileTitleEl && mobileTitles[viewName]) {
+    mobileTitleEl.textContent = mobileTitles[viewName];
+  }
+
+  // Mobile Bottom Navigation Dock Sync
+  const bnavBtns = {
+    home: document.getElementById('bnav-home'),
+    chat: document.getElementById('bnav-chat'),
+    library: document.getElementById('bnav-library'),
+    calculators: document.getElementById('bnav-calculators'),
+    cases: document.getElementById('bnav-cases')
+  };
+  Object.entries(bnavBtns).forEach(([key, btn]) => {
+    if (!btn) return;
+    if (key === viewName) {
+      btn.className = 'flex flex-col items-center justify-center py-1 px-2 rounded-xl transition text-neutral-900 font-semibold cursor-pointer active:scale-95';
+    } else {
+      btn.className = 'flex flex-col items-center justify-center py-1 px-2 rounded-xl transition text-neutral-400 hover:text-neutral-700 font-normal cursor-pointer active:scale-95';
     }
   });
 
@@ -620,6 +675,12 @@ function openCitationDrawer(index) {
   if (pageEl) pageEl.textContent = `Original PDF Page ${citation.page}`;
   if (excerptEl) excerptEl.textContent = `"${citation.excerpt}"`;
 
+  closeMobileSidebar();
+  closeConversationsDrawer();
+
+  const backdrop = document.getElementById('conversations-backdrop');
+  if (backdrop) backdrop.classList.remove('hidden');
+
   if (drawer) {
     drawer.classList.remove('translate-x-full');
   }
@@ -630,6 +691,12 @@ function closeCitationDrawer() {
   const drawer = document.getElementById('citation-drawer');
   if (drawer) {
     drawer.classList.add('translate-x-full');
+  }
+  const convDrawer = document.getElementById('conversations-drawer');
+  const isConvClosed = !convDrawer || convDrawer.classList.contains('translate-x-full');
+  if (isConvClosed) {
+    const backdrop = document.getElementById('conversations-backdrop');
+    if (backdrop) backdrop.classList.add('hidden');
   }
 }
 
@@ -1683,6 +1750,8 @@ function showConfirmDialog({
 // 12. PAST CONVERSATIONS DRAWER
 // ==========================================
 function toggleConversationsDrawer() {
+  closeMobileSidebar();
+  closeCitationDrawer();
   const drawer = document.getElementById('conversations-drawer');
   const backdrop = document.getElementById('conversations-backdrop');
   if (!drawer) return;
@@ -1804,6 +1873,12 @@ function showDirectCitation(citation) {
   if (sourceEl) sourceEl.textContent = citation.source || 'Medical Document';
   if (pageEl) pageEl.textContent = `Original PDF Page ${citation.page || 1}`;
   if (excerptEl) excerptEl.textContent = `"${citation.excerpt || citation.text || 'Excerpt not available'}"`;
+
+  closeMobileSidebar();
+  closeConversationsDrawer();
+
+  const backdrop = document.getElementById('conversations-backdrop');
+  if (backdrop) backdrop.classList.remove('hidden');
 
   if (drawer) {
     drawer.classList.remove('translate-x-full');

@@ -7,3 +7,4 @@ echo "Starting PerfusionGPT backend on port ${PORT}..."
 
 # Start uvicorn with production binding
 python -m uvicorn main:app --host 0.0.0.0 --port "${PORT}"
+

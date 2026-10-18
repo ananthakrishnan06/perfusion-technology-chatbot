@@ -1,8 +1,11 @@
 <!DOCTYPE html>
-<html lang="en" class="h-screen overflow-hidden">
+<html lang="en" class="h-full overflow-hidden">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+  <meta name="theme-color" content="#FAF8F4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Perfusion AI — Cardiovascular Decision Support & Knowledge Workspace</title>
   <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -12,7 +15,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <link rel="stylesheet" href="style.css?v=20261018_v6">
+  <link rel="stylesheet" href="style.css?v=20261018_v7">
   <style>
     /* Medical Illustration Wallpaper */
     body {
@@ -50,14 +53,14 @@
     }
   </script>
 </head>
-<body class="text-darktext flex flex-col h-screen overflow-hidden antialiased select-text" style="background-color: #FAF8F4; background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
+<body class="text-darktext flex flex-col h-full h-[100dvh] overflow-hidden antialiased select-text" style="background-color: #FAF8F4; background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
 
 
   <!-- DEDICATED FULL-VIEWPORT LOGIN INTERFACE (MATCHING EXACT EDITORIAL CLINICAL DESIGN) -->
   <div id="view-login" class="fixed inset-0 z-50 flex flex-col justify-between overflow-y-auto min-h-screen bg-warmbg text-darktext select-none" style="background-color: #FAF8F4; background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
     
     <!-- Top Header -->
-    <header class="w-full px-6 sm:px-10 py-5 flex items-center justify-between z-10 flex-shrink-0">
+    <header class="w-full px-4 sm:px-10 py-3.5 sm:py-5 flex items-center justify-between z-10 flex-shrink-0">
       <!-- Left Logo & Monospace Tracking Subtitle -->
       <div class="flex items-center space-x-3 cursor-pointer" onclick="bypassLoginToGuest()">
         <div class="w-8 h-8 rounded-lg bg-[#18181B] text-amber-300 flex items-center justify-center shadow-xs">
@@ -69,16 +72,16 @@
         </div>
       </div>
 
-      <!-- Right Evidence Badge Pill -->
-      <div class="border border-stone-300/80 bg-white/70 backdrop-blur-xs rounded-full px-3.5 py-1.5 flex items-center space-x-2 text-stone-700 shadow-xs">
+      <!-- Right Evidence Badge Pill (Hidden on Mobile for Clean Header) -->
+      <div class="hidden sm:flex border border-stone-300/80 bg-white/70 backdrop-blur-xs rounded-full px-3.5 py-1.5 items-center space-x-2 text-stone-700 shadow-xs">
         <i data-lucide="shield-check" class="w-3.5 h-3.5 text-stone-700"></i>
         <span class="text-[10px] font-mono-code tracking-[0.16em] uppercase font-semibold text-stone-700">Evidence Informed • Knowledge Support</span>
       </div>
     </header>
 
     <!-- Centered Card Container -->
-    <main class="flex-1 flex items-center justify-center py-6 px-4">
-      <div class="max-w-[430px] w-full bg-white/95 backdrop-blur-md rounded-2xl border border-stone-200/90 shadow-xl shadow-stone-900/5 p-7 sm:p-9 text-center">
+    <main class="flex-1 flex items-center justify-center py-4 sm:py-6 px-3 sm:px-4">
+      <div class="max-w-[430px] w-full bg-white/95 backdrop-blur-md rounded-2xl border border-stone-200/90 shadow-xl shadow-stone-900/5 p-5 sm:p-9 text-center">
         
         <!-- Minimalist Gold Shield Emblem -->
         <div class="w-12 h-12 rounded-full bg-amber-50/70 border border-amber-200/70 flex items-center justify-center mx-auto mb-3.5">
@@ -274,32 +277,40 @@
   <!-- APP SHELL: SIDEBAR + MAIN CONTENT WORKSPACE -->
   <div id="app-shell" class="flex-1 flex overflow-hidden min-h-0 w-full hidden">
 
-    <!-- LEFT CLINICAL SIDEBAR (STATIONARY / PINNED) -->
-    <aside class="w-64 border-r border-subtleborder bg-warmbg/90 backdrop-blur-md flex flex-col justify-between py-5 px-3.5 flex-shrink-0 h-full overflow-y-auto select-none z-10">
+    <!-- MOBILE SIDEBAR BACKDROP OVERLAY -->
+    <div id="sidebar-backdrop" onclick="closeMobileSidebar()" class="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 hidden md:hidden transition-opacity"></div>
+
+    <!-- LEFT CLINICAL SIDEBAR (OFF-CANVAS ON MOBILE, STATIONARY ON DESKTOP) -->
+    <aside id="app-sidebar" class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] md:w-64 border-r border-subtleborder bg-warmbg/95 md:bg-warmbg/90 backdrop-blur-md flex flex-col justify-between py-5 px-3.5 flex-shrink-0 h-full overflow-y-auto select-none transform -translate-x-full md:relative md:translate-x-0 md:flex transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none">
       <div class="space-y-6">
-        <!-- Logo -->
-        <div class="px-2 flex items-center space-x-3 cursor-pointer" onclick="switchView('home')">
-          <div class="w-9 h-9 rounded-lg bg-darktext text-white flex items-center justify-center shadow-sm">
-            <i data-lucide="activity" class="w-5 h-5 text-amber-300"></i>
+        <!-- Logo & Mobile Close Button -->
+        <div class="px-2 flex items-center justify-between">
+          <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('home')">
+            <div class="w-9 h-9 rounded-lg bg-darktext text-white flex items-center justify-center shadow-sm">
+              <i data-lucide="activity" class="w-5 h-5 text-amber-300"></i>
+            </div>
+            <div>
+              <h1 class="text-base font-bold tracking-tight text-darktext leading-none flex items-center gap-1.5">
+                Perfusion AI
+              </h1>
+              <p class="text-[9px] font-mono-code tracking-widest text-neutral-500 uppercase mt-1">Cardiovascular Decision Support</p>
+            </div>
           </div>
-          <div>
-            <h1 class="text-base font-bold tracking-tight text-darktext leading-none flex items-center gap-1.5">
-              Perfusion AI
-            </h1>
-            <p class="text-[9px] font-mono-code tracking-widest text-neutral-500 uppercase mt-1">Cardiovascular Decision Support</p>
-          </div>
+          <button onclick="closeMobileSidebar()" class="md:hidden p-1.5 text-neutral-400 hover:text-darktext rounded-lg hover:bg-neutral-100 transition cursor-pointer" aria-label="Close navigation">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
         </div>
 
         <!-- Navigation Menu -->
         <div>
           <p class="text-[10px] font-mono-code tracking-widest text-neutral-400 uppercase px-2 mb-2 font-semibold">Clinical Modules</p>
           <nav class="space-y-1">
-            <button id="nav-home" onclick="switchView('home')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all bg-white shadow-sm border border-subtleborder text-darktext">
+            <button id="nav-home" onclick="switchView('home')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all bg-white shadow-sm border border-subtleborder text-darktext cursor-pointer">
               <i data-lucide="layout-grid" class="w-4 h-4 text-neutral-700"></i>
               <span>Home</span>
             </button>
 
-            <button id="nav-chat" onclick="switchView('chat')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60">
+            <button id="nav-chat" onclick="switchView('chat')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60 cursor-pointer">
               <div class="flex items-center space-x-3">
                 <i data-lucide="message-square" class="w-4 h-4 text-neutral-500"></i>
                 <span>Ask Perfusion AI</span>
@@ -315,17 +326,17 @@
               <span class="text-[9px] font-mono-code bg-sandbadge text-neutral-800 px-1.5 py-0.5 rounded font-semibold tracking-wider">HISTORY</span>
             </button>
 
-            <button id="nav-library" onclick="switchView('library')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60">
+            <button id="nav-library" onclick="switchView('library')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60 cursor-pointer">
               <i data-lucide="book-open" class="w-4 h-4 text-neutral-500"></i>
               <span>Knowledge Library</span>
             </button>
 
-            <button id="nav-calculators" onclick="switchView('calculators')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60">
+            <button id="nav-calculators" onclick="switchView('calculators')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60 cursor-pointer">
               <i data-lucide="calculator" class="w-4 h-4 text-neutral-500"></i>
               <span>Calculators & Reference</span>
             </button>
 
-            <button id="nav-cases" onclick="switchView('cases')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60">
+            <button id="nav-cases" onclick="switchView('cases')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60 cursor-pointer">
               <i data-lucide="file-question" class="w-4 h-4 text-neutral-500"></i>
               <span>Cases & Learning (MCQs)</span>
             </button>
@@ -349,9 +360,22 @@
     <main class="flex-1 flex flex-col h-full overflow-hidden min-h-0 relative perfusion-canvas-bg" style="background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat;">
 
       <!-- TOP SEARCH & VERIFICATION BAR (PINNED AT TOP) -->
-      <div class="w-full border-b border-subtleborder bg-warmbg/85 backdrop-blur-md px-8 py-3.5 flex items-center justify-between flex-shrink-0 z-10">
+      <div class="w-full border-b border-subtleborder bg-warmbg/85 backdrop-blur-md px-3 sm:px-8 py-2.5 sm:py-3.5 flex items-center justify-between flex-shrink-0 z-10">
+        <!-- Mobile Hamburger & View Header -->
+        <div class="flex items-center space-x-2 md:hidden">
+          <button id="btn-mobile-menu" onclick="toggleMobileSidebar()" class="p-1.5 text-neutral-700 hover:text-darktext hover:bg-neutral-200/50 rounded-lg transition active:scale-95 cursor-pointer" aria-label="Open Navigation Menu">
+            <i data-lucide="menu" class="w-5 h-5"></i>
+          </button>
+          <div class="flex items-center space-x-1.5">
+            <div class="w-6 h-6 rounded-md bg-darktext text-white flex items-center justify-center shadow-xs">
+              <i data-lucide="activity" class="w-3.5 h-3.5 text-amber-300"></i>
+            </div>
+            <span id="mobile-header-title" class="text-xs font-editorial font-bold text-neutral-900 truncate max-w-[140px]">Perfusion AI</span>
+          </div>
+        </div>
+
         <!-- Verification Badge & Profile from Screenshot -->
-        <div class="flex items-center space-x-4 ml-auto">
+        <div class="flex items-center space-x-2.5 sm:space-x-4 ml-auto">
           <div class="hidden lg:flex items-center space-x-2 bg-white border border-subtleborder rounded-lg px-3 py-1.5 shadow-sm">
             <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i>
             <div class="text-left">
@@ -361,7 +385,7 @@
           </div>
 
           <!-- Authentication Profile & Google Sign-In Container -->
-          <div id="auth-container" class="relative pl-3 border-l border-subtleborder">
+          <div id="auth-container" class="relative pl-2.5 sm:pl-3 border-l border-subtleborder">
             <!-- State 1: Logged Out (Sign In Button opening Login Screen) -->
             <div id="auth-logged-out" class="flex items-center">
               <button 
@@ -409,45 +433,45 @@
       </div>
 
       <!-- VIEW: ASK PERFUSION AI (DEDICATED CONVERSATIONAL CHATROOM - PINNED LAYOUT) -->
-      <section id="view-chat" class="hidden flex-1 flex flex-col h-full overflow-hidden max-w-4xl w-full mx-auto px-6 py-4 min-h-0">
+      <section id="view-chat" class="hidden flex-1 flex flex-col h-full overflow-hidden max-w-4xl w-full mx-auto px-3 sm:px-6 py-2.5 sm:py-4 pb-20 md:pb-4 min-h-0">
         <!-- Chatroom Header -->
-        <div class="flex items-center justify-between border-b border-subtleborder pb-3 flex-shrink-0">
-          <div class="flex items-center space-x-3">
-            <div class="w-9 h-9 rounded-xl bg-darktext text-white flex items-center justify-center shadow-xs">
+        <div class="flex items-center justify-between border-b border-subtleborder pb-2.5 sm:pb-3 flex-shrink-0">
+          <div class="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+            <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-darktext text-white flex items-center justify-center shadow-xs flex-shrink-0">
               <i data-lucide="message-square" class="w-4 h-4 text-amber-300"></i>
             </div>
-            <div>
-              <div class="flex items-center space-x-2">
-                <h2 class="text-base font-editorial font-bold text-neutral-900 leading-none">Perfusion AI Chatroom</h2>
-                <span class="text-[9px] font-mono-code bg-sandbadge text-neutral-800 px-1.5 py-0.5 rounded font-semibold">MULTI-TURN</span>
+            <div class="min-w-0">
+              <div class="flex items-center space-x-1.5 sm:space-x-2">
+                <h2 class="text-sm sm:text-base font-editorial font-bold text-neutral-900 leading-none truncate">Perfusion AI Chatroom</h2>
+                <span class="text-[8px] sm:text-[9px] font-mono-code bg-sandbadge text-neutral-800 px-1.5 py-0.5 rounded font-semibold flex-shrink-0">MULTI-TURN</span>
               </div>
-              <p id="chat-session-subtitle" class="text-[11px] text-neutral-500 font-mono-code mt-0.5 truncate max-w-md">Evidence Grounded • 799-Page Textbook Active</p>
+              <p id="chat-session-subtitle" class="text-[10px] sm:text-[11px] text-neutral-500 font-mono-code mt-0.5 truncate max-w-[170px] sm:max-w-md">Evidence Grounded • 799-Page Textbook Active</p>
             </div>
           </div>
 
           <!-- Actions: Depth Selector & Clear Chat -->
-          <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
             <div class="hidden sm:inline-flex p-0.5 rounded-lg bg-neutral-200/50 text-xs font-mono-code">
-              <button id="chat-depth-overview" onclick="setChatDepth('overview')" class="px-2 py-0.5 rounded-md text-neutral-600 hover:text-darktext transition text-[11px]">Overview</button>
-              <button id="chat-depth-detailed" onclick="setChatDepth('detailed')" class="px-2 py-0.5 rounded-md bg-sand font-semibold text-neutral-900 shadow-sm transition text-[11px]">Detailed</button>
-              <button id="chat-depth-student" onclick="setChatDepth('student')" class="px-2 py-0.5 rounded-md text-neutral-600 hover:text-darktext transition text-[11px]">Student</button>
+              <button id="chat-depth-overview" onclick="setChatDepth('overview')" class="px-2 py-0.5 rounded-md text-neutral-600 hover:text-darktext transition text-[11px] cursor-pointer">Overview</button>
+              <button id="chat-depth-detailed" onclick="setChatDepth('detailed')" class="px-2 py-0.5 rounded-md bg-sand font-semibold text-neutral-900 shadow-sm transition text-[11px] cursor-pointer">Detailed</button>
+              <button id="chat-depth-student" onclick="setChatDepth('student')" class="px-2 py-0.5 rounded-md text-neutral-600 hover:text-darktext transition text-[11px] cursor-pointer">Student</button>
             </div>
 
-            <button onclick="clearChat()" class="inline-flex items-center space-x-1.5 text-xs text-neutral-500 hover:text-neutral-800 bg-white border border-subtleborder px-2.5 py-1.5 rounded-lg transition shadow-xs" title="Start a fresh chat">
+            <button onclick="clearChat()" class="inline-flex items-center space-x-1 sm:space-x-1.5 text-xs text-neutral-600 hover:text-darktext bg-white border border-subtleborder px-2 sm:px-2.5 py-1.5 rounded-lg transition shadow-xs cursor-pointer active:scale-95" title="Start a fresh chat">
               <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-              <span class="font-mono-code text-[11px]">New Chat</span>
+              <span class="hidden sm:inline font-mono-code text-[11px]">New Chat</span>
             </button>
           </div>
         </div>
 
         <!-- Chat History Scrollable Area (ONLY THIS SCROLLS IN CHAT) -->
-        <div id="chat-messages" class="flex-1 overflow-y-auto py-4 space-y-4 pr-1 min-h-0">
+        <div id="chat-messages" class="flex-1 overflow-y-auto py-3 sm:py-4 space-y-3 sm:space-y-4 pr-1 min-h-0">
           <!-- Initial Assistant Greeting -->
-          <div class="flex items-start space-x-3 max-w-3xl">
-            <div class="w-8 h-8 rounded-lg bg-[#18181B] text-amber-300 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
-              <i data-lucide="activity" class="w-4 h-4"></i>
+          <div class="flex items-start space-x-2.5 sm:space-x-3 max-w-3xl">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#18181B] text-amber-300 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
+              <i data-lucide="activity" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
             </div>
-            <div class="bg-white border border-subtleborder rounded-2xl rounded-tl-sm p-5 shadow-xs space-y-3 flex-1 text-xs text-neutral-800">
+            <div class="bg-white border border-subtleborder rounded-2xl rounded-tl-sm p-4 sm:p-5 shadow-xs space-y-2.5 sm:space-y-3 flex-1 text-xs text-neutral-800">
               <div class="flex items-center justify-between border-b border-subtleborder/60 pb-2">
                 <span class="font-mono-code font-bold text-neutral-900 text-[11px]">Perfusion AI Assistant</span>
               </div>
@@ -457,13 +481,13 @@
               <div class="space-y-1.5 pt-1">
                 <p class="text-[10px] font-mono-code uppercase tracking-wider text-neutral-400 font-semibold">Suggested Starters:</p>
                 <div class="flex flex-wrap gap-1.5">
-                  <button onclick="sendSuggestedMessage('Walk me through the CPB circuit de-airing procedure and pre-bypass safety checks.')" class="bg-[#FAF8F5] hover:bg-[#F4E8D6] text-neutral-700 border border-subtleborder rounded-lg px-2.5 py-1 text-[11px] transition text-left">
+                  <button onclick="sendSuggestedMessage('Walk me through the CPB circuit de-airing procedure and pre-bypass safety checks.')" class="bg-[#FAF8F5] hover:bg-[#F4E8D6] text-neutral-700 border border-subtleborder rounded-lg px-2.5 py-1 text-[11px] transition text-left cursor-pointer">
                     • Pre-bypass safety checks & de-airing
                   </button>
-                  <button onclick="sendSuggestedMessage('What are the physiological causes and management of acute high arterial line pressure during CPB? (5 marks)')" class="bg-[#FAF8F5] hover:bg-[#F4E8D6] text-neutral-700 border border-subtleborder rounded-lg px-2.5 py-1 text-[11px] transition text-left">
+                  <button onclick="sendSuggestedMessage('What are the physiological causes and management of acute high arterial line pressure during CPB? (5 marks)')" class="bg-[#FAF8F5] hover:bg-[#F4E8D6] text-neutral-700 border border-subtleborder rounded-lg px-2.5 py-1 text-[11px] transition text-left cursor-pointer">
                     • Acute high arterial line pressure (5 marks)
                   </button>
-                  <button onclick="sendSuggestedMessage('Describe Cardiopulmonary Bypass circuits, oxygenator types, and operative conduct (10 marks)')" class="bg-[#FAF8F5] hover:bg-[#F4E8D6] text-neutral-700 border border-subtleborder rounded-lg px-2.5 py-1 text-[11px] transition text-left">
+                  <button onclick="sendSuggestedMessage('Describe Cardiopulmonary Bypass circuits, oxygenator types, and operative conduct (10 marks)')" class="bg-[#FAF8F5] hover:bg-[#F4E8D6] text-neutral-700 border border-subtleborder rounded-lg px-2.5 py-1 text-[11px] transition text-left cursor-pointer">
                     • CPB Circuit & Conduct (10 marks essay)
                   </button>
                 </div>
@@ -473,47 +497,47 @@
         </div>
 
         <!-- Chat Input Bar (PINNED AT BOTTOM) -->
-        <div class="border-t border-subtleborder pt-3 flex-shrink-0">
-          <div class="bg-cream border border-subtleborder rounded-2xl shadow-sm p-3 focus-within:ring-2 focus-within:ring-neutral-400/50 transition">
+        <div class="border-t border-subtleborder pt-2.5 sm:pt-3 flex-shrink-0">
+          <div class="bg-cream border border-subtleborder rounded-2xl shadow-sm p-2 sm:p-3 focus-within:ring-2 focus-within:ring-neutral-400/50 transition">
             <div class="flex items-end space-x-2">
               <textarea 
                 id="chat-input"
                 rows="2"
-                placeholder="Ask a question or specify exam marks e.g. 'Describe oxygenators (5 marks)', 'What is ACT (3M)'... (Enter to send)"
-                class="w-full bg-transparent resize-none text-xs sm:text-sm text-darktext placeholder:text-neutral-400 focus:outline-none leading-relaxed"
+                placeholder="Ask clinical question e.g. 'Describe oxygenators (5 marks)', 'What is ACT (3M)'... (Enter to send)"
+                class="w-full bg-transparent resize-none text-xs sm:text-sm text-darktext placeholder:text-neutral-400 focus:outline-none leading-relaxed font-sans"
                 onkeydown="handleChatKeyDown(event)"
               ></textarea>
               <button 
                 id="btn-chat-send"
                 onclick="sendChatMessage()"
-                class="bg-darktext hover:bg-neutral-800 text-white rounded-xl p-2.5 flex-shrink-0 transition active:scale-95 shadow-xs"
+                class="bg-darktext hover:bg-neutral-800 text-white rounded-xl p-2.5 flex-shrink-0 transition active:scale-95 shadow-xs cursor-pointer"
                 title="Send message"
               >
                 <i data-lucide="send" class="w-4 h-4"></i>
               </button>
             </div>
-            <div class="flex items-center justify-between text-[10px] font-mono-code text-neutral-400 pt-2 px-1 border-t border-subtleborder/40 mt-1">
+            <div class="flex items-center justify-between text-[10px] font-mono-code text-neutral-400 pt-1.5 sm:pt-2 px-1 border-t border-subtleborder/40 mt-1">
               <span>Verified Clinical Decision Support</span>
-              <span>Shift+Enter for newline</span>
+              <span class="hidden sm:inline">Shift+Enter for newline</span>
             </div>
           </div>
         </div>
       </section>
 
       <!-- SCROLLABLE WORKSPACE CONTENT (HOME, CASES, LIBRARY, CALCULATORS) -->
-      <div id="content-scroll-area" class="flex-1 overflow-y-auto min-h-0 flex flex-col">
+      <div id="content-scroll-area" class="flex-1 overflow-y-auto min-h-0 flex flex-col pb-20 md:pb-0">
 
         <!-- VIEW: HOME WORKSPACE (ABOUT THE PLATFORM) -->
-        <section id="view-home" class="flex-1 px-6 sm:px-10 py-10 max-w-6xl w-full mx-auto space-y-12">
+        <section id="view-home" class="flex-1 px-4 sm:px-10 py-6 sm:py-10 max-w-6xl w-full mx-auto space-y-8 sm:space-y-12">
 
           <!-- HERO CONTAINER -->
-          <div class="text-center space-y-4 pt-2">
+          <div class="text-center space-y-3.5 sm:space-y-4 pt-1 sm:pt-2">
             <div class="inline-flex items-center space-x-2 text-[10px] font-mono-code uppercase tracking-widest text-neutral-600 bg-sandbadge/60 border border-amber-200/60 px-3 py-1 rounded-full">
               <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
               <span class="font-semibold text-neutral-800">Cardiovascular Perfusion Clinical Intelligence</span>
             </div>
 
-            <h2 class="text-4xl sm:text-5xl font-editorial font-bold tracking-tight text-neutral-900 max-w-3xl mx-auto leading-tight">
+            <h2 class="text-2xl sm:text-4xl md:text-5xl font-editorial font-bold tracking-tight text-neutral-900 max-w-3xl mx-auto leading-tight">
               Evidence-Grounded Perfusion Decision Support & Knowledge
             </h2>
 
@@ -865,28 +889,28 @@
         </section>
 
       <!-- VIEW: CASES & LEARNING (INTERACTIVE MCQ PRACTICE) -->
-      <section id="view-cases" class="hidden flex-1 px-8 py-8 max-w-5xl w-full mx-auto space-y-6">
-        <div class="border-b border-subtleborder pb-4">
-          <h2 class="text-3xl font-editorial font-bold text-neutral-900">Perfusion Exam Practice & MCQs</h2>
-          <p class="text-sm text-neutral-600 mt-1">Generate multiple-choice practice questions grounded in your 799-page textbook & question bank.</p>
+      <section id="view-cases" class="hidden flex-1 px-4 sm:px-8 py-5 sm:py-8 max-w-5xl w-full mx-auto space-y-5 sm:space-y-6">
+        <div class="border-b border-subtleborder pb-3 sm:pb-4">
+          <h2 class="text-2xl sm:text-3xl font-editorial font-bold text-neutral-900">Perfusion Exam Practice & MCQs</h2>
+          <p class="text-xs sm:text-sm text-neutral-600 mt-1">Generate multiple-choice practice questions grounded in your 799-page textbook & question bank.</p>
         </div>
 
         <!-- MCQ Generator Controls -->
-        <div class="bg-white border border-subtleborder rounded-xl p-5 grid grid-cols-1 md:grid-cols-4 gap-4 items-end shadow-sm">
-          <div class="md:col-span-2 space-y-1.5">
-            <label class="text-xs font-mono-code uppercase text-neutral-500 font-semibold">Topic</label>
-            <input id="mcq-topic" type="text" value="Oxygenator gas transfer and sweep gas regulation" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-darktext focus:outline-none focus:border-neutral-400" />
+        <div class="bg-white border border-subtleborder rounded-xl p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 items-end shadow-sm">
+          <div class="sm:col-span-2 space-y-1.5">
+            <label class="text-[11px] sm:text-xs font-mono-code uppercase text-neutral-500 font-semibold">Topic</label>
+            <input id="mcq-topic" type="text" value="Oxygenator gas transfer and sweep gas regulation" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs sm:text-sm text-darktext focus:outline-none focus:border-neutral-400 font-sans" />
           </div>
           <div class="space-y-1.5">
-            <label class="text-xs font-mono-code uppercase text-neutral-500 font-semibold">Questions Count</label>
-            <select id="mcq-count" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-darktext focus:outline-none">
+            <label class="text-[11px] sm:text-xs font-mono-code uppercase text-neutral-500 font-semibold">Questions Count</label>
+            <select id="mcq-count" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs sm:text-sm text-darktext focus:outline-none font-sans">
               <option value="2">2 Questions</option>
               <option value="3" selected>3 Questions</option>
               <option value="5">5 Questions</option>
             </select>
           </div>
           <div>
-            <button onclick="generateMCQs()" class="w-full bg-darktext text-white text-xs font-semibold py-2.5 rounded-lg hover:bg-neutral-800 transition">
+            <button onclick="generateMCQs()" class="w-full bg-darktext text-white text-xs sm:text-sm font-semibold py-2.5 rounded-lg hover:bg-neutral-800 transition active:scale-95 cursor-pointer shadow-xs">
               Generate Questions
             </button>
           </div>
@@ -896,105 +920,107 @@
       </section>
 
       <!-- VIEW: KNOWLEDGE LIBRARY (DOCUMENTS OVERVIEW & UPLOADER) -->
-      <section id="view-library" class="hidden flex-1 px-8 py-8 max-w-5xl w-full mx-auto space-y-6">
-        <div class="border-b border-subtleborder pb-4 flex items-center justify-between">
+      <section id="view-library" class="hidden flex-1 px-4 sm:px-8 py-5 sm:py-8 max-w-5xl w-full mx-auto space-y-5 sm:space-y-6">
+        <div class="border-b border-subtleborder pb-3 sm:pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-0">
           <div>
-            <h2 class="text-3xl font-editorial font-bold text-neutral-900">Clinical Reference Library</h2>
-            <p class="text-sm text-neutral-600 mt-1">Authentic cardiopulmonary textbooks, clinical monographs, and curriculum guidelines.</p>
+            <h2 class="text-2xl sm:text-3xl font-editorial font-bold text-neutral-900">Clinical Reference Library</h2>
+            <p class="text-xs sm:text-sm text-neutral-600 mt-0.5 sm:mt-1">Authentic cardiopulmonary textbooks, clinical monographs, and curriculum guidelines.</p>
           </div>
-          <button onclick="refreshLibrary()" class="bg-white border border-subtleborder hover:bg-neutral-50 text-xs font-medium px-3 py-1.5 rounded-lg transition inline-flex items-center space-x-1.5 shadow-xs cursor-pointer">
+          <button onclick="refreshLibrary()" class="self-start sm:self-auto bg-white border border-subtleborder hover:bg-neutral-50 text-xs font-medium px-3 py-1.5 rounded-lg transition inline-flex items-center space-x-1.5 shadow-xs cursor-pointer active:scale-95">
             <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-neutral-600"></i>
             <span>Refresh Library</span>
           </button>
         </div>
 
-        <!-- Documents Table -->
+        <!-- Documents Table Container with Horizontal Scroll on Mobile -->
         <div class="bg-white border border-subtleborder rounded-xl overflow-hidden shadow-sm">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-neutral-50 border-b border-subtleborder font-mono-code uppercase text-neutral-500">
-              <tr>
-                <th class="py-3 px-4">Filename</th>
-                <th class="py-3 px-4">Total Pages</th>
-                <th class="py-3 px-4">Status</th>
-                <th class="py-3 px-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody id="documents-table-body" class="divide-y divide-subtleborder">
-              <!-- Dynamically populated -->
-            </tbody>
-          </table>
+          <div class="overflow-x-auto w-full">
+            <table class="w-full text-left text-xs min-w-[500px]">
+              <thead class="bg-neutral-50 border-b border-subtleborder font-mono-code uppercase text-neutral-500">
+                <tr>
+                  <th class="py-3 px-4">Filename</th>
+                  <th class="py-3 px-4">Total Pages</th>
+                  <th class="py-3 px-4">Status</th>
+                  <th class="py-3 px-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="documents-table-body" class="divide-y divide-subtleborder">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
       <!-- VIEW: CLINICAL CALCULATORS -->
-      <section id="view-calculators" class="hidden flex-1 px-8 py-8 max-w-5xl w-full mx-auto space-y-6">
-        <div class="border-b border-subtleborder pb-4">
-          <h2 class="text-3xl font-editorial font-bold text-neutral-900">Perfusion Clinical Calculators</h2>
-          <p class="text-sm text-neutral-600 mt-1">Point-of-care hemodynamics, body surface area, and cardiopulmonary bypass target flow rates.</p>
+      <section id="view-calculators" class="hidden flex-1 px-4 sm:px-8 py-5 sm:py-8 max-w-5xl w-full mx-auto space-y-5 sm:space-y-6">
+        <div class="border-b border-subtleborder pb-3 sm:pb-4">
+          <h2 class="text-2xl sm:text-3xl font-editorial font-bold text-neutral-900">Perfusion Clinical Calculators</h2>
+          <p class="text-xs sm:text-sm text-neutral-600 mt-1">Point-of-care hemodynamics, body surface area, and cardiopulmonary bypass target flow rates.</p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 max-w-4xl mx-auto">
           <!-- Calc 1: Body Surface Area (BSA) -->
-          <div class="bg-white border border-subtleborder rounded-xl p-6 shadow-sm space-y-5 flex flex-col justify-between">
-            <div class="space-y-4">
-              <div class="space-y-2 border-b border-subtleborder pb-3">
+          <div class="bg-white border border-subtleborder rounded-xl p-4 sm:p-6 shadow-sm space-y-4 sm:space-y-5 flex flex-col justify-between">
+            <div class="space-y-3.5 sm:space-y-4">
+              <div class="space-y-1.5 sm:space-y-2 border-b border-subtleborder pb-2.5 sm:pb-3">
                 <div class="flex items-center space-x-2">
-                  <i data-lucide="scale" class="w-5 h-5 text-amber-700"></i>
-                  <h3 class="text-base font-bold text-neutral-900 font-editorial">Body Surface Area (BSA)</h3>
+                  <i data-lucide="scale" class="w-4 h-4 sm:w-5 sm:h-5 text-amber-700"></i>
+                  <h3 class="text-sm sm:text-base font-bold text-neutral-900 font-editorial">Body Surface Area (BSA)</h3>
                 </div>
-                <p class="text-xs text-neutral-500 font-mono-code">Mosteller Formula: √((Height × Weight) / 3600)</p>
+                <p class="text-[11px] sm:text-xs text-neutral-500 font-mono-code">Mosteller Formula: √((Height × Weight) / 3600)</p>
               </div>
               
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label class="text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Height (cm)</label>
-                  <input id="calc-height" type="number" value="175" oninput="calculateBSA()" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1" />
+                  <label class="text-[10px] sm:text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Height (cm)</label>
+                  <input id="calc-height" type="number" inputmode="decimal" value="175" oninput="calculateBSA()" class="w-full border border-subtleborder rounded-lg px-2.5 sm:px-3 py-2 text-xs sm:text-sm text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1 font-sans" />
                 </div>
                 <div>
-                  <label class="text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Weight (kg)</label>
-                  <input id="calc-weight" type="number" value="75" oninput="calculateBSA()" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1" />
+                  <label class="text-[10px] sm:text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Weight (kg)</label>
+                  <input id="calc-weight" type="number" inputmode="decimal" value="75" oninput="calculateBSA()" class="w-full border border-subtleborder rounded-lg px-2.5 sm:px-3 py-2 text-xs sm:text-sm text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1 font-sans" />
                 </div>
               </div>
             </div>
 
-            <div class="bg-cream border border-subtleborder p-4 rounded-xl space-y-2 font-mono-code text-xs">
+            <div class="bg-cream border border-subtleborder p-3.5 sm:p-4 rounded-xl space-y-1.5 sm:space-y-2 font-mono-code text-xs">
               <div class="flex justify-between items-center text-neutral-600">
                 <span>Calculated Body Surface Area:</span> 
-                <span id="calc-bsa-result" class="font-bold text-darktext text-base">1.91 m²</span>
+                <span id="calc-bsa-result" class="font-bold text-darktext text-sm sm:text-base">1.91 m²</span>
               </div>
             </div>
           </div>
 
           <!-- Calc 2: Flow Rate Calculator -->
-          <div class="bg-white border border-subtleborder rounded-xl p-6 shadow-sm space-y-5 flex flex-col justify-between">
-            <div class="space-y-4">
-              <div class="space-y-2 border-b border-subtleborder pb-3">
+          <div class="bg-white border border-subtleborder rounded-xl p-4 sm:p-6 shadow-sm space-y-4 sm:space-y-5 flex flex-col justify-between">
+            <div class="space-y-3.5 sm:space-y-4">
+              <div class="space-y-1.5 sm:space-y-2 border-b border-subtleborder pb-2.5 sm:pb-3">
                 <div class="flex items-center space-x-2">
-                  <i data-lucide="activity" class="w-5 h-5 text-emerald-700"></i>
-                  <h3 class="text-base font-bold text-neutral-900 font-editorial">Flow Rate Calculator</h3>
+                  <i data-lucide="activity" class="w-4 h-4 sm:w-5 sm:h-5 text-emerald-700"></i>
+                  <h3 class="text-sm sm:text-base font-bold text-neutral-900 font-editorial">Flow Rate Calculator</h3>
                 </div>
-                <p class="text-xs text-neutral-500 font-mono-code">Flow Rate = BSA × Cardiac Index</p>
+                <p class="text-[11px] sm:text-xs text-neutral-500 font-mono-code">Flow Rate = BSA × Cardiac Index</p>
               </div>
               
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label class="text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Patient BSA (m²)</label>
-                  <input id="calc-flow-bsa" type="number" step="0.01" value="1.91" oninput="calculateFlowRate()" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1" />
+                  <label class="text-[10px] sm:text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Patient BSA (m²)</label>
+                  <input id="calc-flow-bsa" type="number" step="0.01" inputmode="decimal" value="1.91" oninput="calculateFlowRate()" class="w-full border border-subtleborder rounded-lg px-2.5 sm:px-3 py-2 text-xs sm:text-sm text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1 font-sans" />
                 </div>
                 <div>
-                  <label class="text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Cardiac Index (CI)</label>
-                  <input id="calc-flow-ci" type="number" step="0.1" value="2.4" oninput="calculateFlowRate()" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1" />
+                  <label class="text-[10px] sm:text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Cardiac Index (CI)</label>
+                  <input id="calc-flow-ci" type="number" step="0.1" inputmode="decimal" value="2.4" oninput="calculateFlowRate()" class="w-full border border-subtleborder rounded-lg px-2.5 sm:px-3 py-2 text-xs sm:text-sm text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1 font-sans" />
                   <span class="text-[9px] text-neutral-400 font-mono-code">L/min/m²</span>
                 </div>
               </div>
             </div>
 
-            <div class="bg-cream border border-subtleborder p-4 rounded-xl space-y-2 font-mono-code text-xs">
+            <div class="bg-cream border border-subtleborder p-3.5 sm:p-4 rounded-xl space-y-1.5 sm:space-y-2 font-mono-code text-xs">
               <div class="flex justify-between items-center text-neutral-600">
                 <span>Target Flow Rate:</span> 
-                <span id="calc-flow-rate-result" class="font-bold text-emerald-800 text-base">4.58 L/min</span>
+                <span id="calc-flow-rate-result" class="font-bold text-emerald-800 text-sm sm:text-base">4.58 L/min</span>
               </div>
-              <div class="flex justify-between items-center text-neutral-600 border-t border-subtleborder/60 pt-2">
+              <div class="flex justify-between items-center text-neutral-600 border-t border-subtleborder/60 pt-1.5 sm:pt-2">
                 <span>Volume Equivalent:</span> 
                 <span id="calc-flow-rate-ml" class="font-semibold text-neutral-700 text-xs">4,584 mL/min</span>
               </div>
@@ -1004,31 +1030,59 @@
       </section>
 
       <!-- FOOTER -->
-      <footer class="mt-auto border-t border-subtleborder px-8 py-4 bg-warmbg/85 backdrop-blur-md text-neutral-400 text-xs flex flex-wrap items-center justify-between gap-4">
+      <footer class="mt-auto border-t border-subtleborder px-4 sm:px-8 py-3.5 sm:py-4 bg-warmbg/85 backdrop-blur-md text-neutral-400 text-xs flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4 text-center sm:text-left">
         <p>Perfusion AI • Educational and Clinical Decision Support System</p>
-        <p class="text-neutral-500 font-mono-code text-[11px]">Accredited Clinical Decision Platform • v1.0</p>
+        <p class="text-neutral-500 font-mono-code text-[10px] sm:text-[11px]">Accredited Clinical Decision Platform • v1.0</p>
       </footer>
 
       </div> <!-- /#content-scroll-area -->
 
     </main>
 
+    <!-- MOBILE BOTTOM NAVIGATION DOCK -->
+    <nav id="mobile-bottom-nav" class="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-warmbg/95 backdrop-blur-md border-t border-subtleborder px-1.5 py-1 flex items-center justify-around shadow-lg safe-bottom">
+      <button id="bnav-home" onclick="switchView('home')" class="flex flex-col items-center justify-center py-1 px-2 rounded-xl transition text-neutral-900 font-semibold cursor-pointer active:scale-95" aria-label="Home">
+        <i data-lucide="layout-grid" class="w-4 h-4"></i>
+        <span class="text-[9px] font-mono-code mt-0.5">Home</span>
+      </button>
+      <button id="bnav-chat" onclick="switchView('chat')" class="flex flex-col items-center justify-center py-1 px-2 rounded-xl transition text-neutral-500 hover:text-neutral-900 cursor-pointer active:scale-95" aria-label="Ask AI">
+        <i data-lucide="message-square" class="w-4 h-4"></i>
+        <span class="text-[9px] font-mono-code mt-0.5">Ask AI</span>
+      </button>
+      <button id="bnav-history" onclick="switchView('chat'); toggleConversationsDrawer();" class="flex flex-col items-center justify-center py-1 px-2 rounded-xl transition text-neutral-500 hover:text-neutral-900 cursor-pointer active:scale-95" aria-label="History">
+        <i data-lucide="history" class="w-4 h-4 text-amber-700"></i>
+        <span class="text-[9px] font-mono-code mt-0.5">History</span>
+      </button>
+      <button id="bnav-library" onclick="switchView('library')" class="flex flex-col items-center justify-center py-1 px-2 rounded-xl transition text-neutral-500 hover:text-neutral-900 cursor-pointer active:scale-95" aria-label="Library">
+        <i data-lucide="book-open" class="w-4 h-4"></i>
+        <span class="text-[9px] font-mono-code mt-0.5">Library</span>
+      </button>
+      <button id="bnav-calculators" onclick="switchView('calculators')" class="flex flex-col items-center justify-center py-1 px-2 rounded-xl transition text-neutral-500 hover:text-neutral-900 cursor-pointer active:scale-95" aria-label="Calculators">
+        <i data-lucide="calculator" class="w-4 h-4"></i>
+        <span class="text-[9px] font-mono-code mt-0.5">Calc</span>
+      </button>
+      <button id="bnav-cases" onclick="switchView('cases')" class="flex flex-col items-center justify-center py-1 px-2 rounded-xl transition text-neutral-500 hover:text-neutral-900 cursor-pointer active:scale-95" aria-label="MCQs">
+        <i data-lucide="file-question" class="w-4 h-4"></i>
+        <span class="text-[9px] font-mono-code mt-0.5">MCQs</span>
+      </button>
+    </nav>
+
   </div>
 
   <!-- SLIDE-OVER CITATION INSPECTOR DRAWER -->
-  <div id="citation-drawer" class="fixed inset-y-0 right-0 w-full max-w-md bg-white border-l border-subtleborder shadow-2xl p-6 transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col justify-between">
-    <div class="space-y-4">
+  <div id="citation-drawer" class="fixed inset-y-0 right-0 w-full max-w-full sm:max-w-md bg-white border-l border-subtleborder shadow-2xl p-4 sm:p-6 transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col justify-between">
+    <div class="space-y-3.5 sm:space-y-4">
       <div class="flex items-center justify-between border-b border-subtleborder pb-3">
         <div class="flex items-center space-x-2">
           <i data-lucide="file-check" class="w-4 h-4 text-emerald-600"></i>
           <h3 class="text-sm font-bold text-darktext uppercase font-mono-code tracking-wide">Citation Inspector</h3>
         </div>
-        <button onclick="closeCitationDrawer()" class="text-neutral-400 hover:text-darktext p-1">
+        <button onclick="closeCitationDrawer()" class="text-neutral-400 hover:text-darktext p-1.5 rounded-lg hover:bg-neutral-100 transition cursor-pointer" aria-label="Close citation inspector">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>
 
-      <div class="space-y-2">
+      <div class="space-y-1.5 sm:space-y-2">
         <p class="text-[10px] font-mono-code text-neutral-400 uppercase tracking-widest font-semibold">Source Document</p>
         <p id="drawer-source" class="text-xs font-semibold text-neutral-900 bg-neutral-50 p-2.5 rounded-lg border border-subtleborder break-all"></p>
       </div>
@@ -1038,24 +1092,24 @@
         <p id="drawer-page" class="text-sm font-bold text-amber-800"></p>
       </div>
 
-      <div class="space-y-2">
+      <div class="space-y-1.5 sm:space-y-2">
         <p class="text-[10px] font-mono-code text-neutral-400 uppercase tracking-widest font-semibold">Verbatim Textbook Excerpt</p>
         <div id="drawer-excerpt" class="text-xs text-neutral-700 bg-warmbg p-3.5 rounded-xl border border-subtleborder leading-relaxed italic max-h-60 overflow-y-auto"></div>
       </div>
     </div>
 
-    <div class="border-t border-subtleborder pt-4">
-      <button onclick="closeCitationDrawer()" class="w-full bg-darktext text-white text-xs font-semibold py-2 rounded-lg hover:bg-neutral-800 transition">
+    <div class="border-t border-subtleborder pt-3.5 sm:pt-4">
+      <button onclick="closeCitationDrawer()" class="w-full bg-darktext text-white text-xs sm:text-sm font-semibold py-2.5 rounded-lg hover:bg-neutral-800 transition active:scale-95 cursor-pointer shadow-xs">
         Close Inspector
       </button>
     </div>
   </div>
 
-  <!-- BACKDROP FOR CONVERSATIONS DRAWER -->
-  <div id="conversations-backdrop" onclick="closeConversationsDrawer()" class="fixed inset-0 bg-black/25 backdrop-blur-[2px] z-40 hidden transition-opacity"></div>
+  <!-- BACKDROP FOR CONVERSATIONS & CITATIONS DRAWER -->
+  <div id="conversations-backdrop" onclick="closeConversationsDrawer(); closeCitationDrawer();" class="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 hidden transition-opacity"></div>
 
   <!-- SLIDE-OVER PAST CONVERSATIONS DRAWER -->
-  <div id="conversations-drawer" class="fixed inset-y-0 right-0 w-full max-w-md bg-white border-l border-subtleborder shadow-2xl p-6 transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col justify-between">
+  <div id="conversations-drawer" class="fixed inset-y-0 right-0 w-full max-w-full sm:max-w-md bg-white border-l border-subtleborder shadow-2xl p-4 sm:p-6 transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col justify-between">
     <div class="space-y-4 flex-1 flex flex-col min-h-0">
       <!-- Drawer Header -->
       <div class="flex items-center justify-between border-b border-subtleborder pb-3 flex-shrink-0">
@@ -1178,6 +1232,6 @@
   </div>
 
   <script src="config.js?v=20261018_v1"></script>
-  <script src="app.js?v=20261018_v6"></script>
+  <script src="app.js?v=20261018_v7"></script>
 </body>
 </html>
