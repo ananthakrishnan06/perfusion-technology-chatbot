@@ -18,6 +18,16 @@ const state = {
   authConfig: { google_client_id: '', enabled: false, mode: 'setup_required' },
 };
 
+// Dynamic API Endpoint Resolver (supports Vercel proxy rewrite & direct Azure App Service routing)
+function apiEndpoint(path) {
+  const base = (window.PERFUSION_CONFIG && window.PERFUSION_CONFIG.API_BASE_URL)
+    || localStorage.getItem('perfusion_api_base_url')
+    || '';
+  if (!path.startsWith('/')) path = '/' + path;
+  if (!base) return path;
+  return `${base.replace(/\/+$/, '')}${path}`;
+}
+
 // ==========================================
 // 1. INITIALIZATION & HEALTH CHECK
 // ==========================================
@@ -32,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const authError = urlParams.get('auth_error');
 
   if (authToken) {
-    fetch('/api/v1/auth/me', {
+    fetch(apiEndpoint('/api/v1/auth/me'), {
       headers: { 'Authorization': `Bearer ${authToken}` }
     })
     .then(r => r.json())
@@ -77,7 +87,7 @@ async function checkHealth() {
   const status = document.getElementById('health-status');
 
   try {
-    const res = await fetch('/health');
+    const res = await fetch(apiEndpoint('/health'));
     if (res.ok) {
       const data = await res.json();
       if (status) status.textContent = 'System Online';
@@ -92,7 +102,7 @@ async function checkHealth() {
 
   // Also query document counts
   try {
-    const docRes = await fetch('/api/v1/documents');
+    const docRes = await fetch(apiEndpoint('/api/v1/documents'));
     if (docRes.ok) {
       const docData = await docRes.json();
       state.documents = docData.documents || [];
@@ -405,7 +415,7 @@ async function sendChatMessage() {
 
     // Try streaming endpoint first for instant response
     try {
-      const streamRes = await fetch('/api/v1/chat/stream', {
+      const streamRes = await fetch(apiEndpoint('/api/v1/chat/stream'), {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify(payload)
@@ -473,7 +483,7 @@ async function sendChatMessage() {
 
     if (!streamSucceeded) {
       // Fallback to standard non-streaming /ask endpoint
-      const response = await fetch('/api/v1/chat/ask', {
+      const response = await fetch(apiEndpoint('/api/v1/chat/ask'), {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify(payload)
@@ -645,7 +655,7 @@ async function generateMCQs() {
   `;
 
   try {
-    const res = await fetch('/api/v1/study/mcq', {
+    const res = await fetch(apiEndpoint('/api/v1/study/mcq'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, num_questions })
@@ -766,7 +776,7 @@ async function loadDocuments() {
   `;
 
   try {
-    const res = await fetch('/api/v1/documents');
+    const res = await fetch(apiEndpoint('/api/v1/documents'));
     if (!res.ok) throw new Error('Failed to fetch documents');
     const data = await res.json();
     state.documents = data.documents || [];
@@ -882,7 +892,7 @@ async function initAuth() {
   // Validate or refresh session from backend if token exists
   if (state.user && state.user.token) {
     try {
-      const meRes = await fetch('/api/v1/auth/me', {
+      const meRes = await fetch(apiEndpoint('/api/v1/auth/me'), {
         headers: { 'Authorization': `Bearer ${state.user.token}` }
       });
       if (meRes.ok) {
@@ -914,7 +924,7 @@ async function initAuth() {
 
 async function fetchAuthConfig() {
   try {
-    const res = await fetch('/api/v1/auth/config');
+    const res = await fetch(apiEndpoint('/api/v1/auth/config'));
     if (res.ok) {
       state.authConfig = await res.json();
       updateAuthModalConfigUI();
@@ -1008,7 +1018,7 @@ function initSupabaseClient() {
 
 async function syncSupabaseSession(accessToken) {
   try {
-    const res = await fetch('/api/v1/auth/session', {
+    const res = await fetch(apiEndpoint('/api/v1/auth/session'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ access_token: accessToken })
@@ -1092,7 +1102,7 @@ async function saveSupabaseCredentials() {
   }
 
   try {
-    const res = await fetch('/api/v1/auth/configure', {
+    const res = await fetch(apiEndpoint('/api/v1/auth/configure'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1145,7 +1155,7 @@ async function initiateGoogleSignIn() {
         console.warn('Supabase Google OAuth error, falling back to direct OAuth:', error);
         // If Supabase Google provider is not yet enabled in Supabase dashboard, fall back seamlessly to backend Google OAuth
         if (state.authConfig?.google_client_id) {
-          window.location.href = '/api/v1/auth/google/login';
+          window.location.href = apiEndpoint('/api/v1/auth/google/login');
           return;
         }
         showToastNotification(error.message || 'Google sign-in error with Supabase.', 'error');
@@ -1159,7 +1169,7 @@ async function initiateGoogleSignIn() {
     } catch (e) {
       console.warn('Supabase OAuth exception, falling back to direct OAuth:', e);
       if (state.authConfig?.google_client_id) {
-        window.location.href = '/api/v1/auth/google/login';
+        window.location.href = apiEndpoint('/api/v1/auth/google/login');
         return;
       }
       if (btn) {
@@ -1171,7 +1181,7 @@ async function initiateGoogleSignIn() {
 
   // 2. Direct Google OAuth (if client ID is configured)
   if (state.authConfig?.google_client_id) {
-    window.location.href = '/api/v1/auth/google/login';
+    window.location.href = apiEndpoint('/api/v1/auth/google/login');
     return;
   }
 
@@ -1185,7 +1195,7 @@ async function handleGoogleCredentialResponse(response) {
   }
 
   try {
-    const res = await fetch('/api/v1/auth/google', {
+    const res = await fetch(apiEndpoint('/api/v1/auth/google'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ credential: response.credential })
@@ -1271,7 +1281,7 @@ async function handleForgotPassword(event) {
   }
 
   try {
-    const res = await fetch('/api/v1/auth/recover-password', {
+    const res = await fetch(apiEndpoint('/api/v1/auth/recover-password'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
@@ -1332,7 +1342,7 @@ async function handleEmailPasswordLogin(event) {
     }
 
     // 2. Authenticate through backend endpoint (proxy to Supabase or DB)
-    const res = await fetch('/api/v1/auth/login', {
+    const res = await fetch(apiEndpoint('/api/v1/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, remember_me: remember })
@@ -1418,7 +1428,7 @@ async function handleRegister(event) {
     }
 
     // 2. Register through backend endpoint
-    const res = await fetch('/api/v1/auth/register', {
+    const res = await fetch(apiEndpoint('/api/v1/auth/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, role, password })
@@ -1519,7 +1529,7 @@ async function handleSignOut() {
   try {
     const token = state.user?.token;
     if (token) {
-      await fetch('/api/v1/auth/logout', {
+      await fetch(apiEndpoint('/api/v1/auth/logout'), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1706,7 +1716,7 @@ async function loadConversationsList() {
   `;
 
   try {
-    const res = await fetch('/api/v1/conversations');
+    const res = await fetch(apiEndpoint('/api/v1/conversations'));
     const data = await res.json();
 
     if (data.status === 'database_not_configured') {
@@ -1821,7 +1831,7 @@ async function loadConversationSession(convId, autoClose = true, autoSwitch = tr
       `;
     }
 
-    const res = await fetch(`/api/v1/conversations/${convId}`);
+    const res = await fetch(apiEndpoint(`/api/v1/conversations/${convId}`));
     if (res.status === 404) {
       // Clean up stale or deleted conversation ID
       localStorage.removeItem('perfusion_current_conv_id');
@@ -1939,7 +1949,7 @@ async function deleteConversationSession(convId, event) {
           delBtn.innerHTML = '<div class="inline-block animate-spin w-3.5 h-3.5 border-2 border-rose-600 border-t-transparent rounded-full"></div>';
         }
 
-        const res = await fetch(`/api/v1/conversations/${convId}`, { method: 'DELETE' });
+        const res = await fetch(apiEndpoint(`/api/v1/conversations/${convId}`), { method: 'DELETE' });
         if (!res.ok) throw new Error('Delete failed on server.');
 
         if (state.currentConversationId === convId) {

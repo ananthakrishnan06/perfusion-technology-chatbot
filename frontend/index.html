@@ -12,12 +12,12 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <link rel="stylesheet" href="/app/style.css?v=20261017_bg2">
+  <link rel="stylesheet" href="style.css?v=20261018_v6">
   <style>
     /* Medical Illustration Wallpaper */
     body {
       background-color: #FAF8F4 !important;
-      background-image: url('/app/images/bg_perfusion.png?v=2') !important;
+      background-image: url('images/bg_perfusion.png?v=2') !important;
       background-size: cover !important;
       background-position: center center !important;
       background-repeat: no-repeat !important;
@@ -25,7 +25,7 @@
     }
     .perfusion-canvas-bg {
       background-color: transparent !important;
-      background-image: url('/app/images/bg_perfusion.png?v=2') !important;
+      background-image: url('images/bg_perfusion.png?v=2') !important;
       background-size: cover !important;
       background-position: center center !important;
       background-repeat: no-repeat !important;
@@ -50,11 +50,11 @@
     }
   </script>
 </head>
-<body class="text-darktext flex flex-col h-screen overflow-hidden antialiased select-text" style="background-color: #FAF8F4; background-image: url('/app/images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
+<body class="text-darktext flex flex-col h-screen overflow-hidden antialiased select-text" style="background-color: #FAF8F4; background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
 
 
   <!-- DEDICATED FULL-VIEWPORT LOGIN INTERFACE (MATCHING EXACT EDITORIAL CLINICAL DESIGN) -->
-  <div id="view-login" class="fixed inset-0 z-50 flex flex-col justify-between overflow-y-auto min-h-screen bg-warmbg text-darktext select-none" style="background-color: #FAF8F4; background-image: url('/app/images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
+  <div id="view-login" class="fixed inset-0 z-50 flex flex-col justify-between overflow-y-auto min-h-screen bg-warmbg text-darktext select-none" style="background-color: #FAF8F4; background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
     
     <!-- Top Header -->
     <header class="w-full px-6 sm:px-10 py-5 flex items-center justify-between z-10 flex-shrink-0">
@@ -346,7 +346,7 @@
     </aside>
 
     <!-- MAIN INTERACTIVE CONTENT AREA (PINNED HEADER, ANCHORED SIDEBAR, MEDICAL ILLUSTRATION CANVAS) -->
-    <main class="flex-1 flex flex-col h-full overflow-hidden min-h-0 relative perfusion-canvas-bg" style="background-image: url('/app/images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat;">
+    <main class="flex-1 flex flex-col h-full overflow-hidden min-h-0 relative perfusion-canvas-bg" style="background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat;">
 
       <!-- TOP SEARCH & VERIFICATION BAR (PINNED AT TOP) -->
       <div class="w-full border-b border-subtleborder bg-warmbg/85 backdrop-blur-md px-8 py-3.5 flex items-center justify-between flex-shrink-0 z-10">
@@ -727,7 +727,7 @@
                 <!-- 1. CPB -->
                 <div onclick="setQueryAndExecute('Explain the fundamental components, circuits, and safe conduct of Cardiopulmonary Bypass (CPB).')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
                   <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
-                    <img src="/app/images/cpb_bypass.jpg" alt="Cardiopulmonary Bypass (CPB)" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                    <img src="images/cpb_bypass.jpg" alt="Cardiopulmonary Bypass (CPB)" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
                   </div>
                   <div class="p-3.5 space-y-1">
                     <div class="flex items-center justify-between">
@@ -742,7 +742,7 @@
                 <!-- 2. Oxygenation -->
                 <div onclick="setQueryAndExecute('Explain oxygenator gas exchange principles, FiO2, sweep gas flow, and factors affecting arterial oxygenation on CPB.')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
                   <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
-                    <img src="/app/images/oxygenation.jpg" alt="Oxygenation" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                    <img src="images/oxygenation.jpg" alt="Oxygenation" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
                   </div>
                   <div class="p-3.5 space-y-1">
                     <div class="flex items-center justify-between">
@@ -757,7 +757,7 @@
                 <!-- 3. Myocardial Protection -->
                 <div onclick="setQueryAndExecute('Compare antegrade and retrograde cardioplegia delivery techniques, hypothermic vs normothermic solutions, and myocardial protection strategies.')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
                   <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
-                    <img src="/app/images/myocardial_protection.jpg" alt="Myocardial Protection" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                    <img src="images/myocardial_protection.jpg" alt="Myocardial Protection" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
                   </div>
                   <div class="p-3.5 space-y-1">
                     <div class="flex items-center justify-between">
@@ -772,7 +772,7 @@
                 <!-- 4. Anticoagulation (ACT) -->
                 <div onclick="setQueryAndExecute('Detail the heparin dosing protocol, Activated Clotting Time (ACT) targets (>480s), heparin resistance management, and protamine reversal.')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
                   <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
-                    <img src="/app/images/anticoagulation_act.jpg" alt="Anticoagulation ACT" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                    <img src="images/anticoagulation_act.jpg" alt="Anticoagulation ACT" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
                   </div>
                   <div class="p-3.5 space-y-1">
                     <div class="flex items-center justify-between">
@@ -787,7 +787,7 @@
                 <!-- 5. ECMO -->
                 <div onclick="setQueryAndExecute('Compare VA and VV ECMO indications, cannula selection, circuit management, and physiological differences.')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
                   <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
-                    <img src="/app/images/ecmo.jpg" alt="ECMO" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                    <img src="images/ecmo.jpg" alt="ECMO" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
                   </div>
                   <div class="p-3.5 space-y-1">
                     <div class="flex items-center justify-between">
@@ -802,7 +802,7 @@
                 <!-- 6. Hemodynamics -->
                 <div onclick="setQueryAndExecute('How are target pump flow, Cardiac Index, and Oxygen Delivery (DO2) calculated and maintained during CPB?')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
                   <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
-                    <img src="/app/images/hemodynamics.jpg" alt="Hemodynamics" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                    <img src="images/hemodynamics.jpg" alt="Hemodynamics" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
                   </div>
                   <div class="p-3.5 space-y-1">
                     <div class="flex items-center justify-between">
@@ -817,7 +817,7 @@
                 <!-- 7. Heat Exchange -->
                 <div onclick="setQueryAndExecute('What are the principles of temperature management, hypothermia, rewarming limits, and water-blood temperature gradients on CPB?')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
                   <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
-                    <img src="/app/images/heat_exchange.jpg" alt="Heat Exchange" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                    <img src="images/heat_exchange.jpg" alt="Heat Exchange" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
                   </div>
                   <div class="p-3.5 space-y-1">
                     <div class="flex items-center justify-between">
@@ -832,7 +832,7 @@
                 <!-- 8. Troubleshooting -->
                 <div onclick="setQueryAndExecute('What are the emergency protocols for massive air embolism, oxygenator failure, and sudden high arterial line pressure during CPB?')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
                   <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
-                    <img src="/app/images/troubleshooting.jpg" alt="Troubleshooting" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                    <img src="images/troubleshooting.jpg" alt="Troubleshooting" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
                   </div>
                   <div class="p-3.5 space-y-1">
                     <div class="flex items-center justify-between">
@@ -1177,6 +1177,7 @@
     </div>
   </div>
 
-  <script src="/app/app.js?v=20261018_v5"></script>
+  <script src="config.js?v=20261018_v1"></script>
+  <script src="app.js?v=20261018_v6"></script>
 </body>
 </html>
