@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List, Any
+from typing import List, Any, Union
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -79,15 +79,15 @@ class Settings(BaseSettings):
     RERANKER_MODEL_NAME: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # CORS Configuration
-    CORS_ORIGINS: List[str] = ["*"]
+    CORS_ORIGINS: Union[List[str], str] = ["*"]
     CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ALLOW_METHODS: List[str] = ["*"]
-    CORS_ALLOW_HEADERS: List[str] = ["*"]
+    CORS_ALLOW_METHODS: Union[List[str], str] = ["*"]
+    CORS_ALLOW_HEADERS: Union[List[str], str] = ["*"]
 
-    @field_validator("CORS_ORIGINS", mode="before")
+    @field_validator("CORS_ORIGINS", "CORS_ALLOW_METHODS", "CORS_ALLOW_HEADERS", mode="after")
     @classmethod
     def parse_cors_origins(cls, v: Any) -> List[str]:
-        """Safely parse comma-separated or JSON list of origins from environment variables."""
+        """Safely parse wildcard (*), comma-separated, or JSON list of origins from environment variables."""
         if isinstance(v, str):
             v = v.strip()
             if v.startswith("[") and v.endswith("]"):
