@@ -169,4 +169,14 @@ body {
   }
 }
 
+/* Backend loading banner slide-down animation */
+@keyframes bannerSlideDown {
+  0% { transform: translate(-50%, -120%); opacity: 0; }
+  100% { transform: translate(-50%, 0); opacity: 1; }
+}
+
+#backend-loading-banner:not(.hidden) {
+  animation: bannerSlideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 

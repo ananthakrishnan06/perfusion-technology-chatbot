@@ -15,7 +15,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <link rel="stylesheet" href="style.css?v=20261018_v7">
+  <link rel="stylesheet" href="style.css?v=20261018_v9">
   <style>
     /* Medical Illustration Wallpaper */
     body {
@@ -55,6 +55,33 @@
 </head>
 <body class="text-darktext flex flex-col h-full h-[100dvh] overflow-hidden antialiased select-text" style="background-color: #FAF8F4; background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
 
+  <!-- DEDICATED BACKEND COLD-START / LOADING INTERFACE BANNER -->
+  <aside id="backend-loading-banner" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[94%] sm:w-auto transition-all duration-300 ease-out pointer-events-auto" role="status" aria-live="polite">
+    <div class="bg-stone-900/95 backdrop-blur-md text-white border border-amber-500/50 shadow-2xl rounded-2xl p-3 sm:px-4 sm:py-3.5 flex flex-col space-y-2">
+      <div class="flex items-center space-x-3.5">
+        <div class="relative flex items-center justify-center flex-shrink-0">
+          <div class="w-8 h-8 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin"></div>
+          <i data-lucide="server" class="w-4 h-4 text-amber-300 absolute"></i>
+        </div>
+        <div class="text-left flex-1 min-w-0 pr-2">
+          <div class="flex items-center space-x-2">
+            <span id="backend-loading-title" class="text-xs font-semibold tracking-wide text-amber-300">Backend is loading...</span>
+            <span class="text-[9px] font-mono-code px-1.5 py-0.5 rounded bg-amber-500/25 text-amber-200 uppercase font-medium">Server Waking Up</span>
+          </div>
+          <p id="backend-loading-desc" class="text-[11px] text-stone-300 mt-0.5 leading-snug">
+            Free cloud instances sleep after inactivity. Please hold on while the clinical server initializes (~30s)...
+          </p>
+        </div>
+        <button onclick="hideBackendLoading()" class="p-1 text-stone-400 hover:text-white rounded-lg hover:bg-stone-800 transition cursor-pointer" aria-label="Dismiss loading banner">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <!-- Animated Progress Bar -->
+      <div class="w-full bg-stone-800 rounded-full h-1 overflow-hidden">
+        <div id="backend-loading-progress" class="bg-gradient-to-r from-amber-500 via-amber-300 to-amber-500 h-1 rounded-full transition-all duration-500" style="width: 25%;"></div>
+      </div>
+    </div>
+  </aside>
 
   <!-- DEDICATED FULL-VIEWPORT LOGIN INTERFACE (MATCHING EXACT EDITORIAL CLINICAL DESIGN) -->
   <div id="view-login" class="fixed inset-0 z-50 flex flex-col justify-between overflow-y-auto min-h-screen bg-warmbg text-darktext select-none" style="background-color: #FAF8F4; background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
@@ -99,7 +126,15 @@
         <div id="auth-box-login">
           <div>
             <h2 class="font-editorial text-3xl font-normal text-stone-900 tracking-tight mb-1">Welcome back</h2>
-            <p class="text-xs text-stone-500 font-sans mb-5">Sign in to your perfusion knowledge workspace.</p>
+            <p class="text-xs text-stone-500 font-sans mb-3.5">Sign in to your perfusion knowledge workspace.</p>
+          </div>
+
+          <!-- Subtle Waking Up Notice on Login Screen -->
+          <div id="login-backend-alert" class="hidden mb-3.5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 text-left flex items-center space-x-2.5">
+            <div class="w-3.5 h-3.5 rounded-full border-2 border-amber-600 border-t-transparent animate-spin flex-shrink-0"></div>
+            <div class="text-[11px] leading-tight text-amber-950 font-medium">
+              Backend is loading (~30s). Guest mode & sign-in will connect automatically as soon as it's awake.
+            </div>
           </div>
 
           <form onsubmit="handleEmailPasswordLogin(event)" class="space-y-3.5 text-left">
@@ -1259,6 +1294,6 @@
   </div>
 
   <script src="config.js?v=20261018_v2"></script>
-  <script src="app.js?v=20261018_v8"></script>
+  <script src="app.js?v=20261018_v9"></script>
 </body>
 </html>

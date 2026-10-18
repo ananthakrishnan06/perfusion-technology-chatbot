@@ -91,33 +91,163 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-async function checkHealth() {
-  const dot = document.getElementById('health-dot');
-  const status = document.getElementById('health-status');
+let isBackendLoading = false;
+let backendHealthPollingTimer = null;
+let backendLoadingProgressInterval = null;
 
-  try {
-    const res = await fetch(apiEndpoint('/health'));
-    if (res.ok) {
-      const data = await res.json();
-      if (status) status.textContent = 'System Online';
-      if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
-    } else {
-      throw new Error('Health check failed');
-    }
-  } catch (err) {
-    if (status) status.textContent = 'Connecting...';
-    if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-500';
+function showBackendLoading(
+  title = "Backend is loading...",
+  desc = "Free cloud instances sleep after inactivity. Please hold on while the clinical server initializes (~30s)..."
+) {
+  isBackendLoading = true;
+  const banner = document.getElementById('backend-loading-banner');
+  const titleEl = document.getElementById('backend-loading-title');
+  const descEl = document.getElementById('backend-loading-desc');
+  const loginAlert = document.getElementById('login-backend-alert');
+  const healthDot = document.getElementById('health-dot');
+  const healthStatus = document.getElementById('health-status');
+
+  if (titleEl) titleEl.textContent = title;
+  if (descEl) descEl.textContent = desc;
+  if (banner) {
+    banner.classList.remove('hidden');
+    banner.classList.add('flex');
+    if (window.lucide) lucide.createIcons();
+  }
+  if (loginAlert) loginAlert.classList.remove('hidden');
+
+  if (healthDot) healthDot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping';
+  if (healthStatus) healthStatus.textContent = 'Backend Loading...';
+
+  // Animate progress bar across ~35 seconds
+  const progressBar = document.getElementById('backend-loading-progress');
+  if (progressBar && !backendLoadingProgressInterval) {
+    let p = 25;
+    progressBar.style.width = `${p}%`;
+    backendLoadingProgressInterval = setInterval(() => {
+      if (p < 92) {
+        p += Math.random() * 4 + 1.5;
+        progressBar.style.width = `${Math.min(92, Math.round(p))}%`;
+      }
+    }, 1000);
+  }
+}
+
+function hideBackendLoading(connectedMsg = "Backend connected and ready!") {
+  isBackendLoading = false;
+  if (backendLoadingProgressInterval) {
+    clearInterval(backendLoadingProgressInterval);
+    backendLoadingProgressInterval = null;
   }
 
-  // Also query document counts
+  const progressBar = document.getElementById('backend-loading-progress');
+  if (progressBar) progressBar.style.width = '100%';
+
+  const banner = document.getElementById('backend-loading-banner');
+  const titleEl = document.getElementById('backend-loading-title');
+  const descEl = document.getElementById('backend-loading-desc');
+  const loginAlert = document.getElementById('login-backend-alert');
+
+  if (titleEl) titleEl.textContent = "Backend Online";
+  if (descEl) descEl.textContent = connectedMsg;
+  if (loginAlert) loginAlert.classList.add('hidden');
+
+  const healthDot = document.getElementById('health-dot');
+  const healthStatus = document.getElementById('health-status');
+  if (healthDot) healthDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+  if (healthStatus) healthStatus.textContent = 'System Online';
+
+  setTimeout(() => {
+    if (banner && !isBackendLoading) {
+      banner.classList.add('hidden');
+      banner.classList.remove('flex');
+    }
+  }, 1600);
+}
+
+async function refreshBackendData() {
+  // Query document counts
   try {
     const docRes = await fetch(apiEndpoint('/api/v1/documents'));
     if (docRes.ok) {
       const docData = await docRes.json();
       state.documents = docData.documents || [];
+      if (typeof renderDocumentsList === 'function') {
+        renderDocumentsList();
+      }
     }
   } catch (e) {
     console.debug('Failed to load initial document count', e);
+  }
+
+  // Refresh auth config
+  try {
+    if (typeof fetchAuthConfig === 'function') {
+      await fetchAuthConfig();
+    }
+  } catch (e) {
+    console.debug('Failed to refresh auth config', e);
+  }
+
+  // Refresh conversations if user active
+  try {
+    if (typeof loadRecentConversations === 'function') {
+      loadRecentConversations();
+    }
+  } catch (e) {
+    console.debug('Failed to refresh conversations', e);
+  }
+}
+
+async function checkHealth() {
+  const dot = document.getElementById('health-dot');
+  const status = document.getElementById('health-status');
+
+  // If health check takes longer than 1.2s, display the backend loading notification immediately
+  const slowTimer = setTimeout(() => {
+    showBackendLoading();
+  }, 1200);
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+    const res = await fetch(apiEndpoint('/health'), { signal: controller.signal });
+    clearTimeout(timeoutId);
+    clearTimeout(slowTimer);
+
+    if (res.ok) {
+      if (backendHealthPollingTimer) {
+        clearInterval(backendHealthPollingTimer);
+        backendHealthPollingTimer = null;
+      }
+      hideBackendLoading();
+      refreshBackendData();
+      return true;
+    } else {
+      throw new Error(`Health check returned status ${res.status}`);
+    }
+  } catch (err) {
+    clearTimeout(slowTimer);
+    showBackendLoading();
+
+    // Start background polling every 3 seconds until server wakes up
+    if (!backendHealthPollingTimer) {
+      backendHealthPollingTimer = setInterval(async () => {
+        try {
+          const res = await fetch(apiEndpoint('/health'));
+          if (res.ok) {
+            clearInterval(backendHealthPollingTimer);
+            backendHealthPollingTimer = null;
+            hideBackendLoading();
+            refreshBackendData();
+          }
+        } catch (e) {
+          // Still waiting for backend spin-up
+        }
+      }, 3000);
+    }
+    return false;
   }
 }
 
@@ -580,12 +710,21 @@ async function sendChatMessage() {
     </div>
     <div class="bg-white border border-subtleborder rounded-2xl rounded-tl-sm px-4 py-3 shadow-xs flex items-center space-x-2 text-xs text-neutral-600">
       <span class="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-      <span class="font-mono-code text-[11px]">Consulting clinical literature & formulating evidence-based reply...</span>
+      <span id="chat-typing-text" class="font-mono-code text-[11px]">Consulting clinical literature & formulating evidence-based reply...</span>
     </div>
   `;
   chatMessages.appendChild(typingIndicator);
   scrollChatToBottom();
   if (window.lucide) lucide.createIcons();
+
+  // If backend takes time (> 2s), show backend loading notice
+  const chatLoadingTimer = setTimeout(() => {
+    const typingText = document.getElementById('chat-typing-text');
+    if (typingText) {
+      typingText.textContent = "Backend is loading (~30s cloud server spin-up)... Formulating reply...";
+    }
+    showBackendLoading("Backend is loading...", "Cloud server is waking up from sleep (~30s). Your answer will stream as soon as it responds.");
+  }, 2200);
 
   // 3. Format prompt with depth context
   let formattedQuery = query;
@@ -663,6 +802,8 @@ async function sendChatMessage() {
       });
 
       if (streamRes.ok && streamRes.body) {
+        clearTimeout(chatLoadingTimer);
+        hideBackendLoading();
         typingIndicator.remove();
         chatMessages.appendChild(assistantMsgEl);
         if (window.lucide) lucide.createIcons();
@@ -730,6 +871,9 @@ async function sendChatMessage() {
         body: JSON.stringify(payload)
       });
 
+      clearTimeout(chatLoadingTimer);
+      hideBackendLoading();
+
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.detail || err.message || 'Request could not be completed');
@@ -767,16 +911,22 @@ async function sendChatMessage() {
     }
 
   } catch (err) {
+    clearTimeout(chatLoadingTimer);
+    hideBackendLoading();
     typingIndicator.remove();
+
+    const isNetworkOrColdStart = /failed to fetch|networkerror|load failed|network request failed|502|503|service unavailable/i.test(err.message || '');
     const errorBubble = document.createElement('div');
     errorBubble.className = 'flex items-start space-x-3 max-w-2xl';
     errorBubble.innerHTML = `
-      <div class="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
-        <i data-lucide="alert-circle" class="w-4 h-4"></i>
+      <div class="w-8 h-8 rounded-lg ${isNetworkOrColdStart ? 'bg-amber-600' : 'bg-rose-600'} text-white flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
+        <i data-lucide="${isNetworkOrColdStart ? 'server' : 'alert-circle'}" class="w-4 h-4"></i>
       </div>
-      <div class="bg-rose-50 border border-rose-200 text-rose-900 rounded-2xl rounded-tl-sm p-3.5 shadow-xs text-xs space-y-1">
-        <p class="font-semibold">Unable to generate reply</p>
-        <p class="font-mono-code text-[11px]">${err.message}</p>
+      <div class="${isNetworkOrColdStart ? 'bg-amber-50 border border-amber-200 text-amber-950' : 'bg-rose-50 border border-rose-200 text-rose-900'} rounded-2xl rounded-tl-sm p-3.5 shadow-xs text-xs space-y-1">
+        <p class="font-semibold">${isNetworkOrColdStart ? 'Backend was waking up (Cold Start)' : 'Unable to generate reply'}</p>
+        <p class="font-mono-code text-[11px] leading-relaxed">
+          ${isNetworkOrColdStart ? 'Free cloud servers take ~30–45s to spin up from sleep mode. The server is initializing now. Please press Enter or click Send to try again.' : escapeHtml(err.message)}
+        </p>
       </div>
     `;
     chatMessages.appendChild(errorBubble);
