@@ -1293,7 +1293,50 @@
     </div>
   </div>
 
-  <script src="config.js?v=20261018_v2"></script>
-  <script src="app.js?v=20261018_v9"></script>
+  <!-- DEDICATED AUTHENTICATION & LOGIN LOADING SCREEN OVERLAY -->
+  <div id="login-loading-overlay" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm select-none transition-all duration-300">
+    <div class="max-w-[420px] w-full bg-white/98 backdrop-blur-md rounded-2xl border border-stone-200 shadow-2xl p-6 sm:p-8 text-center space-y-4">
+      
+      <!-- Pulsing Emblem with Dual Spinner Rings -->
+      <div class="relative w-16 h-16 mx-auto flex items-center justify-center">
+        <!-- Outer rotating amber ring -->
+        <div class="absolute inset-0 rounded-full border-2 border-amber-400/20 border-t-amber-600 animate-spin"></div>
+        <!-- Inner pulsating shield container -->
+        <div class="w-12 h-12 rounded-full bg-amber-50 border border-amber-200/80 flex items-center justify-center shadow-xs">
+          <i data-lucide="shield-check" class="w-6 h-6 text-amber-600 stroke-[1.8] animate-pulse"></i>
+        </div>
+      </div>
+
+      <!-- Monospace Section Eyebrow -->
+      <div class="flex items-center justify-center space-x-2">
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+        <span class="font-mono-code text-[10px] tracking-[0.2em] text-amber-800 uppercase font-bold">SECURE CLINICAL AUTHENTICATION</span>
+      </div>
+
+      <!-- Main Heading & Description -->
+      <div class="space-y-1">
+        <h3 id="login-loading-title" class="font-editorial text-2xl font-bold text-stone-900 tracking-tight">
+          Signing in with Google...
+        </h3>
+        <p id="login-loading-desc" class="text-xs text-stone-600 leading-relaxed font-sans px-2">
+          Verifying your credentials and isolating your clinical workspace...
+        </p>
+      </div>
+
+      <!-- Linear Clinical Progress Bar -->
+      <div class="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
+        <div id="login-loading-bar" class="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 rounded-full transition-all duration-300" style="width: 35%;"></div>
+      </div>
+
+      <!-- Monospace Status Step -->
+      <div class="pt-1 flex items-center justify-center space-x-2 text-[11px] font-mono-code text-stone-500">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span id="login-loading-status">Connecting to authentication service...</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js?v=20261018_v3"></script>
+  <script src="app.js?v=20261018_v10"></script>
 </body>
 </html>

@@ -32,8 +32,68 @@ function getAuthHeaders(extraHeaders = {}) {
 }
 
 let conversationFetchSeq = 0;
+let loginLoadingInterval = null;
+
+function showLoginLoading(
+  title = "Signing in with Google...",
+  desc = "Verifying your Google credentials and isolating your clinical workspace...",
+  statusText = "Authenticating session..."
+) {
+  const overlay = document.getElementById('login-loading-overlay');
+  const titleEl = document.getElementById('login-loading-title');
+  const descEl = document.getElementById('login-loading-desc');
+  const statusEl = document.getElementById('login-loading-status');
+  const barEl = document.getElementById('login-loading-bar');
+
+  if (titleEl) titleEl.textContent = title;
+  if (descEl) descEl.textContent = desc;
+  if (statusEl) statusEl.textContent = statusText;
+
+  if (overlay) {
+    overlay.style.opacity = '1';
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+    if (window.lucide) lucide.createIcons();
+  }
+
+  // Smoothly increment progress bar towards 92%
+  if (barEl) {
+    let p = 25;
+    barEl.style.width = `${p}%`;
+    if (loginLoadingInterval) clearInterval(loginLoadingInterval);
+    loginLoadingInterval = setInterval(() => {
+      if (p < 92) {
+        p += Math.random() * 8 + 3;
+        barEl.style.width = `${Math.min(92, Math.round(p))}%`;
+      }
+    }, 200);
+  }
+}
+
+function hideLoginLoading() {
+  if (loginLoadingInterval) {
+    clearInterval(loginLoadingInterval);
+    loginLoadingInterval = null;
+  }
+  const barEl = document.getElementById('login-loading-bar');
+  if (barEl) barEl.style.width = '100%';
+
+  const overlay = document.getElementById('login-loading-overlay');
+  if (overlay) {
+    overlay.style.transition = 'opacity 0.28s ease-out';
+    overlay.style.opacity = '0';
+    setTimeout(() => {
+      overlay.classList.add('hidden');
+      overlay.classList.remove('flex');
+      overlay.style.opacity = '';
+      overlay.style.transition = '';
+      if (barEl) barEl.style.width = '35%';
+    }, 290);
+  }
+}
 
 function setAuthenticatedUser(newUser) {
+  hideLoginLoading();
   if (!newUser || !newUser.sub) return;
   const previousSub = state.user ? state.user.sub : null;
   const isDifferentUser = previousSub && previousSub !== newUser.sub;
@@ -58,6 +118,7 @@ function setAuthenticatedUser(newUser) {
 }
 
 function clearAuthenticatedUser() {
+  hideLoginLoading();
   conversationFetchSeq++;
 
   localStorage.removeItem('perfusion_user');
@@ -122,20 +183,36 @@ document.addEventListener('DOMContentLoaded', () => {
   const authError = urlParams.get('auth_error');
 
   if (authToken) {
+    showLoginLoading(
+      "Signing in with Google...",
+      "Validating your Google credentials and restoring your clinical sessions...",
+      "Authenticating session..."
+    );
+
     fetch(apiEndpoint('/api/v1/auth/me'), {
       headers: { 'Authorization': `Bearer ${authToken}` }
     })
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) throw new Error("Authentication failed");
+      return r.json();
+    })
     .then(user => {
       if (user && user.authenticated) {
         setAuthenticatedUser(user);
         showAuthNotification(`Signed in with Google as ${user.name}`);
       }
     })
-    .catch(console.error);
+    .catch(err => {
+      console.error(err);
+      showToastNotification("Google sign-in could not be completed. Please try again.", "error");
+    })
+    .finally(() => {
+      hideLoginLoading();
+    });
 
     window.history.replaceState({}, document.title, window.location.pathname);
   } else if (authError) {
+    hideLoginLoading();
     showToastNotification(`Google sign-in error: ${authError}`, 'error');
     window.history.replaceState({}, document.title, window.location.pathname);
   }
@@ -1515,6 +1592,11 @@ function initSupabaseClient() {
 }
 
 async function syncSupabaseSession(accessToken) {
+  showLoginLoading(
+    "Signing in with Google...",
+    "Synchronizing user profile and isolating your clinical workspace...",
+    "Authorizing user session..."
+  );
   try {
     const res = await fetch(apiEndpoint('/api/v1/auth/session'), {
       method: 'POST',
@@ -1530,9 +1612,15 @@ async function syncSupabaseSession(accessToken) {
         window.history.replaceState(null, '', window.location.pathname);
       }
       return user;
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToastNotification(extractErrorMessage(err, 'Sign-in could not be completed.'), 'error');
     }
   } catch (err) {
     console.error('Supabase session sync error:', err);
+    showToastNotification('Network error during Google sign-in.', 'error');
+  } finally {
+    hideLoginLoading();
   }
   return null;
 }
@@ -1633,6 +1721,12 @@ async function initiateGoogleSignIn() {
   const btn = document.getElementById('btn-google-signin') || document.querySelector('button[onclick="initiateGoogleSignIn()"]');
   const originalHtml = btn ? btn.innerHTML : '';
 
+  showLoginLoading(
+    "Connecting to Google...",
+    "Redirecting to Google account authentication...",
+    "Opening Google sign-in..."
+  );
+
   // 1. If Supabase is active, initiate Supabase Google OAuth
   if (window.supabaseClient && state.authConfig?.supabase_enabled) {
     try {
@@ -1652,9 +1746,15 @@ async function initiateGoogleSignIn() {
         console.warn('Supabase Google OAuth error, falling back to direct OAuth:', error);
         // If Supabase Google provider is not yet enabled in Supabase dashboard, fall back seamlessly to backend Google OAuth
         if (state.authConfig?.google_client_id) {
+          showLoginLoading(
+            "Connecting to Google...",
+            "Redirecting to Google OAuth authentication...",
+            "Redirecting to Google..."
+          );
           window.location.href = apiEndpoint('/api/v1/auth/google/login');
           return;
         }
+        hideLoginLoading();
         showToastNotification(error.message || 'Google sign-in error with Supabase.', 'error');
         if (btn) {
           btn.disabled = false;
@@ -1666,9 +1766,15 @@ async function initiateGoogleSignIn() {
     } catch (e) {
       console.warn('Supabase OAuth exception, falling back to direct OAuth:', e);
       if (state.authConfig?.google_client_id) {
+        showLoginLoading(
+          "Connecting to Google...",
+          "Redirecting to Google OAuth authentication...",
+          "Redirecting to Google..."
+        );
         window.location.href = apiEndpoint('/api/v1/auth/google/login');
         return;
       }
+      hideLoginLoading();
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
@@ -1678,10 +1784,16 @@ async function initiateGoogleSignIn() {
 
   // 2. Direct Google OAuth (if client ID is configured)
   if (state.authConfig?.google_client_id) {
+    showLoginLoading(
+      "Connecting to Google...",
+      "Redirecting to Google OAuth authentication...",
+      "Redirecting to Google..."
+    );
     window.location.href = apiEndpoint('/api/v1/auth/google/login');
     return;
   }
 
+  hideLoginLoading();
   showToastNotification('Please configure Google OAuth credentials in Supabase or .env', 'info');
 }
 
@@ -1690,6 +1802,12 @@ async function handleGoogleCredentialResponse(response) {
     console.error('Invalid credential received from Google');
     return;
   }
+
+  showLoginLoading(
+    "Signing in with Google...",
+    "Verifying your Google credentials and isolating your clinical workspace...",
+    "Validating Google ID token..."
+  );
 
   try {
     const res = await fetch(apiEndpoint('/api/v1/auth/google'), {
@@ -1710,6 +1828,8 @@ async function handleGoogleCredentialResponse(response) {
   } catch (err) {
     console.error('Authentication network error:', err);
     showToastNotification('Failed to connect to authentication backend.', 'error');
+  } finally {
+    hideLoginLoading();
   }
 }
 
@@ -1814,6 +1934,12 @@ async function handleEmailPasswordLogin(event) {
   }
 
   try {
+    showLoginLoading(
+      "Signing in...",
+      "Authenticating institutional credentials & isolating your workspace...",
+      "Verifying credentials..."
+    );
+
     // 1. If Supabase client is initialized on frontend, authenticate directly
     if (window.supabaseClient && state.authConfig?.supabase_enabled) {
       try {
@@ -1827,6 +1953,7 @@ async function handleEmailPasswordLogin(event) {
           if (user) return;
         } else if (error) {
           // If Supabase returned an explicit authentication error, show message
+          hideLoginLoading();
           showToastNotification(error.message || 'Supabase authentication failed.', 'error');
           return;
         }
@@ -1854,6 +1981,7 @@ async function handleEmailPasswordLogin(event) {
     console.error('Email sign-in network error:', err);
     showToastNotification('Network error connecting to login server.', 'error');
   } finally {
+    hideLoginLoading();
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.innerHTML = '<span>Sign in</span><i data-lucide="arrow-right" class="w-4 h-4"></i>';
@@ -1886,6 +2014,12 @@ async function handleRegister(event) {
   }
 
   try {
+    showLoginLoading(
+      "Creating account...",
+      "Setting up your clinical perfusion workspace...",
+      "Registering profile..."
+    );
+
     // 1. If Supabase client is initialized on frontend, register directly
     if (window.supabaseClient && state.authConfig?.supabase_enabled) {
       try {
@@ -1898,6 +2032,7 @@ async function handleRegister(event) {
         });
 
         if (error) {
+          hideLoginLoading();
           showToastNotification(error.message || 'Supabase registration failed.', 'error');
           return;
         }
@@ -1909,6 +2044,7 @@ async function handleRegister(event) {
             return;
           }
         } else if (data?.user) {
+          hideLoginLoading();
           showToastNotification('Account created! Please check your institutional email to confirm.', 'info');
           toggleAuthBox('login', event);
           return;
@@ -1937,6 +2073,7 @@ async function handleRegister(event) {
     console.error('Registration network error:', err);
     showToastNotification('Network error connecting to registration server.', 'error');
   } finally {
+    hideLoginLoading();
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.innerHTML = '<span>Create account</span><i data-lucide="arrow-right" class="w-4 h-4"></i>';
