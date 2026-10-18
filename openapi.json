@@ -1,0 +1,1166 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PerfusionGPT \u2014 RAG Backend for Perfusion Technology",
+    "description": "Evidence-grounded Retrieval-Augmented Generation (RAG) backend for Perfusion Technology education. Retrieves authoritative information from uploaded medical textbooks, lecture notes, and papers, and synthesizes answers with authentic page-level citations using Groq.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health check",
+        "description": "Check service health and version information.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/documents/upload": {
+      "post": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Upload and process one or more PDF documents",
+        "description": "Ingest PDF documents into the PerfusionGPT knowledge base.\n\nValidates file extensions, size, structure, extracts text with PyMuPDF,\nperforms structure-aware chunking, generates embeddings, and indexes\nin FAISS and BM25.",
+        "operationId": "upload_documents_api_v1_documents_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_documents_api_v1_documents_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentUploadBatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/documents": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "List all indexed documents",
+        "description": "Retrieve all registered documents, their identifiers, filenames,\npage counts, chunk counts, and processing statuses.",
+        "operationId": "list_documents_api_v1_documents_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{document_id}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Get document details and sample passages",
+        "description": "Retrieve metadata, page counts, OCR flags, and sample chunks for a specific document.",
+        "operationId": "get_document_api_v1_documents__document_id__get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Delete a document and exclude all its passages",
+        "description": "Remove a document from the active knowledge base, delete its stored file,\nand rebuild vector and keyword indices to ensure its passages are completely excluded.",
+        "operationId": "delete_document_api_v1_documents__document_id__delete",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/retrieval/search": {
+      "post": {
+        "tags": [
+          "Retrieval & Indexing"
+        ],
+        "summary": "Search source passages without calling LLM",
+        "description": "Search relevant passages, document filenames, page numbers, and ranking\nmetadata without invoking the Groq answer generator.\n\nEnables testing and verifying hybrid retrieval independently of the LLM.",
+        "operationId": "search_sources_api_v1_retrieval_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrievalQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetrievalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/index/rebuild": {
+      "post": {
+        "tags": [
+          "Retrieval & Indexing"
+        ],
+        "summary": "Rebuild vector and keyword indices from stored metadata",
+        "description": "Rebuild FAISS dense vector index and BM25 sparse keyword index from all\ncurrently indexed document chunks.",
+        "operationId": "rebuild_index_api_v1_index_rebuild_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/ask": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Ask an evidence-grounded Perfusion Technology question",
+        "description": "Ask a question grounded in the uploaded Perfusion Technology documents.\n\nRetrieves the most relevant passages using hybrid FAISS and BM25 search,\nsynthesizes an evidence-grounded answer via Groq API, and returns verifiable\nsource citations with 1-based original PDF page numbers.",
+        "operationId": "ask_question_api_v1_chat_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/study/mcq": {
+      "post": {
+        "tags": [
+          "Study & MCQs"
+        ],
+        "summary": "Generate evidence-grounded multiple-choice study questions",
+        "description": "Generate multiple-choice questions on a perfusion topic derived from indexed PDF evidence.\n\nReturns 4 answer choices, the correct option, educational explanation, and citations.\nIf evidence is insufficient, returns an explicit insufficient evidence notice.",
+        "operationId": "generate_study_mcq_api_v1_study_mcq_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCQRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCQResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_upload_documents_api_v1_documents_upload_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "One or more PDF files to ingest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_documents_api_v1_documents_upload_post"
+      },
+      "ChatMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "pattern": "^(user|assistant)$",
+            "title": "Role",
+            "description": "Role: 'user' or 'assistant'"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Content",
+            "description": "Message text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "ChatMessage",
+        "description": "A single turn in optional conversation history."
+      },
+      "ChatRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question",
+            "description": "User question"
+          },
+          "document_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Ids",
+            "description": "Optional list of document IDs to restrict search to. Searches all active documents if omitted or empty."
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "description": "Number of passages to retrieve for grounding",
+            "default": 5
+          },
+          "conversation_history": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation History",
+            "description": "Optional recent conversation turns for context continuity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "ChatRequest",
+        "description": "Request payload for asking a question."
+      },
+      "ChatResponse": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "Evidence-grounded answer or insufficient evidence notice"
+          },
+          "grounded": {
+            "type": "boolean",
+            "title": "Grounded",
+            "description": "True if answer is backed by retrieved evidence"
+          },
+          "insufficient_evidence": {
+            "type": "boolean",
+            "title": "Insufficient Evidence",
+            "description": "True if indexed documents lacked sufficient evidence"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "type": "array",
+            "title": "Citations",
+            "description": "List of source citations used"
+          },
+          "retrieval": {
+            "$ref": "#/components/schemas/RetrievalMeta",
+            "description": "Retrieval metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "grounded",
+          "insufficient_evidence",
+          "retrieval"
+        ],
+        "title": "ChatResponse",
+        "description": "Standardized response from the PerfusionGPT assistant."
+      },
+      "ChunkMetadata": {
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id",
+            "description": "Unique chunk identifier, e.g., {doc_id}_p{page}_c{idx}"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "description": "Unique document identifier"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "Original filename of the PDF"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "1-based original PDF page number"
+          },
+          "chunk_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Index",
+            "description": "Sequential index of the chunk within the document"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text",
+            "description": "Extracted and cleaned passage text"
+          },
+          "char_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Char Count",
+            "description": "Character count of the text"
+          },
+          "estimated_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Tokens",
+            "description": "Estimated token count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "document_id",
+          "source",
+          "page",
+          "chunk_index",
+          "text"
+        ],
+        "title": "ChunkMetadata",
+        "description": "Metadata representing a single passage chunk from a document."
+      },
+      "Citation": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "Original PDF filename"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "Original 1-based PDF page number"
+          },
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id",
+            "description": "Unique chunk identifier"
+          },
+          "excerpt": {
+            "type": "string",
+            "title": "Excerpt",
+            "description": "Exact supporting text excerpt from the document"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "page",
+          "chunk_id",
+          "excerpt"
+        ],
+        "title": "Citation",
+        "description": "Source citation referencing an authentic passage from an uploaded PDF."
+      },
+      "DocumentDetailResponse": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/DocumentMetadata"
+          },
+          "sample_chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkMetadata"
+            },
+            "type": "array",
+            "title": "Sample Chunks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document"
+        ],
+        "title": "DocumentDetailResponse",
+        "description": "Detailed document metadata and chunk overview."
+      },
+      "DocumentListResponse": {
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentMetadata"
+            },
+            "type": "array",
+            "title": "Documents"
+          },
+          "total_documents": {
+            "type": "integer",
+            "title": "Total Documents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documents",
+          "total_documents"
+        ],
+        "title": "DocumentListResponse",
+        "description": "List of all registered documents."
+      },
+      "DocumentMetadata": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "description": "Unique document identifier"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "Original filename"
+          },
+          "file_hash": {
+            "type": "string",
+            "title": "File Hash",
+            "description": "SHA-256 hash of file content for deduplication"
+          },
+          "file_size_bytes": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Size Bytes",
+            "description": "File size in bytes"
+          },
+          "total_pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Pages",
+            "description": "Total number of pages in the PDF"
+          },
+          "total_chunks": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Chunks",
+            "description": "Total number of extracted chunks"
+          },
+          "low_text_pages": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Low Text Pages",
+            "description": "Pages with little or no extractable text"
+          },
+          "ocr_needed": {
+            "type": "boolean",
+            "title": "Ocr Needed",
+            "description": "Flag indicating if the document appears to be scanned",
+            "default": false
+          },
+          "ocr_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Warning",
+            "description": "Human-readable warning regarding OCR requirement"
+          },
+          "uploaded_at": {
+            "type": "string",
+            "title": "Uploaded At",
+            "description": "ISO timestamp of upload"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Processing status: indexed, failed, processing",
+            "default": "indexed"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error details if processing failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "filename",
+          "file_hash",
+          "file_size_bytes",
+          "total_pages",
+          "total_chunks"
+        ],
+        "title": "DocumentMetadata",
+        "description": "Metadata representing an uploaded and indexed document."
+      },
+      "DocumentUploadBatchResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentUploadResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "total_uploaded": {
+            "type": "integer",
+            "title": "Total Uploaded"
+          },
+          "total_failed": {
+            "type": "integer",
+            "title": "Total Failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results",
+          "total_uploaded",
+          "total_failed"
+        ],
+        "title": "DocumentUploadBatchResponse",
+        "description": "Response returned for uploading one or multiple documents."
+      },
+      "DocumentUploadResult": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "original_filename": {
+            "type": "string",
+            "title": "Original Filename"
+          },
+          "processing_status": {
+            "type": "string",
+            "title": "Processing Status"
+          },
+          "page_count": {
+            "type": "integer",
+            "title": "Page Count"
+          },
+          "chunk_count": {
+            "type": "integer",
+            "title": "Chunk Count"
+          },
+          "ocr_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Warning"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "original_filename",
+          "processing_status",
+          "page_count",
+          "chunk_count"
+        ],
+        "title": "DocumentUploadResult",
+        "description": "Response returned for a single uploaded document."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "MCQItem": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/MCQOption"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "correct_answer": {
+            "type": "string",
+            "title": "Correct Answer",
+            "description": "The correct option key (e.g., 'A', 'B', 'C', or 'D')"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "Educational explanation grounded in the retrieved sources"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "type": "array",
+            "title": "Citations",
+            "description": "Supporting PDF citations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question",
+          "options",
+          "correct_answer",
+          "explanation"
+        ],
+        "title": "MCQItem",
+        "description": "A generated multiple-choice question item."
+      },
+      "MCQOption": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "Option letter: A, B, C, or D"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Option text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "text"
+        ],
+        "title": "MCQOption",
+        "description": "A single multiple choice option."
+      },
+      "MCQRequest": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 2,
+            "title": "Topic",
+            "description": "Perfusion topic (e.g., 'Centrifugal pumps', 'Arterial filters')"
+          },
+          "num_questions": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Num Questions",
+            "description": "Number of questions to generate (1 to 10)",
+            "default": 3
+          },
+          "document_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Ids",
+            "description": "Optional document IDs filter"
+          },
+          "difficulty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty",
+            "description": "Difficulty level: beginner, intermediate, advanced",
+            "default": "intermediate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic"
+        ],
+        "title": "MCQRequest",
+        "description": "Request payload to generate multiple-choice study questions."
+      },
+      "MCQResponse": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/MCQItem"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "total_questions": {
+            "type": "integer",
+            "title": "Total Questions"
+          },
+          "insufficient_evidence": {
+            "type": "boolean",
+            "title": "Insufficient Evidence",
+            "default": false
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "type": "array",
+            "title": "Citations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic",
+          "questions",
+          "total_questions"
+        ],
+        "title": "MCQResponse",
+        "description": "Response containing generated multiple-choice study questions."
+      },
+      "RetrievalMeta": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "title": "Method",
+            "description": "Retrieval method used (e.g. hybrid, semantic, bm25)",
+            "default": "hybrid"
+          },
+          "retrieved_chunks": {
+            "type": "integer",
+            "title": "Retrieved Chunks",
+            "description": "Number of chunks retrieved and supplied as context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "retrieved_chunks"
+        ],
+        "title": "RetrievalMeta",
+        "description": "Retrieval metadata returned with answer."
+      },
+      "RetrievalQuery": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Query",
+            "description": "Search question or topic"
+          },
+          "document_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Ids",
+            "description": "Optional list of document IDs to restrict search to. If omitted or empty, searches all documents."
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "description": "Number of passages to retrieve",
+            "default": 5
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "RetrievalQuery",
+        "description": "Query parameters for source retrieval."
+      },
+      "RetrievalResponse": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "retrieved_chunks": {
+            "items": {
+              "$ref": "#/components/schemas/RetrievedChunk"
+            },
+            "type": "array",
+            "title": "Retrieved Chunks"
+          },
+          "total_retrieved": {
+            "type": "integer",
+            "title": "Total Retrieved"
+          },
+          "retrieval_method": {
+            "type": "string",
+            "title": "Retrieval Method",
+            "default": "hybrid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "retrieved_chunks",
+          "total_retrieved"
+        ],
+        "title": "RetrievalResponse",
+        "description": "Response containing retrieved source passages without LLM generation."
+      },
+      "RetrievedChunk": {
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "chunk_index": {
+            "type": "integer",
+            "title": "Chunk Index"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "Combined relevance / RRF score"
+          },
+          "semantic_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Rank",
+            "description": "Rank in semantic FAISS retrieval (1-based)"
+          },
+          "bm25_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bm25 Rank",
+            "description": "Rank in BM25 keyword retrieval (1-based)"
+          },
+          "retrieval_method": {
+            "type": "string",
+            "title": "Retrieval Method",
+            "description": "Retrieval method used",
+            "default": "hybrid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "document_id",
+          "source",
+          "page",
+          "chunk_index",
+          "text",
+          "score"
+        ],
+        "title": "RetrievedChunk",
+        "description": "A retrieved passage chunk enriched with scoring and citation information."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

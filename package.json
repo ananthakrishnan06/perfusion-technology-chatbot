@@ -1,0 +1,11 @@
+{
+  "name": "pt-chatbot",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "neon config plan"
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.2",
+    "@neon/env": "^1.6.3"
+  }
+}

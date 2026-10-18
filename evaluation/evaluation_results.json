@@ -1,0 +1,311 @@
+{
+  "retrieval_k3": {
+    "bm25": {
+      "precision": 0.5866666666666667,
+      "accuracy_hit_rate": 0.8,
+      "recall": 0.8,
+      "f1_score": 0.676923076923077,
+      "mrr": 0.6866666666666668
+    },
+    "vector": {
+      "precision": 0.6666666666666667,
+      "accuracy_hit_rate": 0.88,
+      "recall": 0.88,
+      "f1_score": 0.7586206896551725,
+      "mrr": 0.7733333333333333
+    },
+    "hybrid": {
+      "precision": 0.6533333333333333,
+      "accuracy_hit_rate": 0.88,
+      "recall": 0.88,
+      "f1_score": 0.7499130434782609,
+      "mrr": 0.7666666666666667
+    }
+  },
+  "retrieval_k5": {
+    "bm25": {
+      "precision": 0.6,
+      "accuracy_hit_rate": 0.88,
+      "recall": 0.88,
+      "f1_score": 0.7135135135135136,
+      "mrr": 0.7046666666666667
+    },
+    "vector": {
+      "precision": 0.64,
+      "accuracy_hit_rate": 0.88,
+      "recall": 0.88,
+      "f1_score": 0.7410526315789474,
+      "mrr": 0.7733333333333333
+    },
+    "hybrid": {
+      "precision": 0.648,
+      "accuracy_hit_rate": 0.88,
+      "recall": 0.88,
+      "f1_score": 0.7463874345549738,
+      "mrr": 0.7666666666666667
+    }
+  },
+  "end_to_end": {
+    "confusion_matrix": {
+      "TP": 23,
+      "TN": 5,
+      "FP": 0,
+      "FN": 2,
+      "Total": 30
+    },
+    "accuracy": 0.9333333333333333,
+    "precision": 1.0,
+    "recall": 0.92,
+    "specificity": 1.0,
+    "f1_score": 0.9583333333333334,
+    "concept_precision": 0.9347826086956522,
+    "concept_recall": 0.520807453416149,
+    "concept_f1": 0.6550065876152832,
+    "citation_accuracy": 1.0,
+    "citations_verified": 69,
+    "total_citations_checked": 69,
+    "case_details": [
+      {
+        "id": "CASE-01",
+        "category": "Anticoagulation",
+        "question": "What is the target Activated Clotting Time (ACT) before initiating cardiopulmonary bypass?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-02",
+        "category": "Anticoagulation",
+        "question": "What is the standard initial heparin dosing regimen for cardiopulmonary bypass?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-03",
+        "category": "Anticoagulation",
+        "question": "How is protamine dosed to neutralize heparin after weaning from cardiopulmonary bypass?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-04",
+        "category": "Anticoagulation",
+        "question": "What causes heparin resistance during CPB and how is it clinically managed?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-05",
+        "category": "Anticoagulation",
+        "question": "How does Heparin-Induced Thrombocytopenia (HIT) affect perfusion management and what alternatives are used?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-06",
+        "category": "Oxygenators",
+        "question": "How do membrane oxygenators regulate arterial PaO2 and carbon dioxide (PaCO2) elimination during CPB?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-07",
+        "category": "Oxygenators",
+        "question": "What materials are utilized in modern hollow-fiber membrane oxygenators?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-08",
+        "category": "Oxygenators",
+        "question": "What are the signs of acute membrane oxygenator failure during cardiopulmonary bypass?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-09",
+        "category": "Oxygenators",
+        "question": "What is the recommended ratio of sweep gas flow to blood flow on initiation of bypass?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-10",
+        "category": "Pumps & Hardware",
+        "question": "Compare centrifugal blood pumps with positive-displacement roller pumps in CPB circuits.",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-11",
+        "category": "Pumps & Hardware",
+        "question": "What is the procedure for setting roller pump occlusion before initiating CPB?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-12",
+        "category": "Pumps & Hardware",
+        "question": "What role does the arterial line filter play in a cardiopulmonary bypass circuit?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-13",
+        "category": "Pumps & Hardware",
+        "question": "What are the advantages and pressure limits of Vacuum-Assisted Venous Drainage (VAVD)?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-14",
+        "category": "Myocardial Protection",
+        "question": "What is the physiological mechanism of cardioplegic arrest using hyperkalemic solutions?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-15",
+        "category": "Myocardial Protection",
+        "question": "What is the composition and delivery strategy of del Nido cardioplegia?",
+        "status": "FALSE NEGATIVE (Improper Refusal)",
+        "grounded": false,
+        "citations_count": 0
+      },
+      {
+        "id": "CASE-16",
+        "category": "Myocardial Protection",
+        "question": "Compare antegrade and retrograde cardioplegia administration routes.",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-17",
+        "category": "Myocardial Protection",
+        "question": "What is Buckberg cardioplegia and how is the 4:1 blood-to-crystalloid regimen delivered?",
+        "status": "FALSE NEGATIVE (Improper Refusal)",
+        "grounded": false,
+        "citations_count": 0
+      },
+      {
+        "id": "CASE-18",
+        "category": "Temperature Management",
+        "question": "Explain the difference between alpha-stat and pH-stat arterial blood gas management during hypothermia.",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-19",
+        "category": "Temperature Management",
+        "question": "What target temperatures define Deep Hypothermic Circulatory Arrest (DHCA)?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-20",
+        "category": "Temperature Management",
+        "question": "How does core body temperature influence minimal pump flow rate (MPFR) during CPB?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-21",
+        "category": "Temperature Management",
+        "question": "What is the maximum recommended water-to-blood temperature gradient during rewarming on CPB?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-22",
+        "category": "Perfusion Emergencies",
+        "question": "What are the immediate perfusionist actions upon detecting massive air in the arterial line during CPB?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-23",
+        "category": "Perfusion Emergencies",
+        "question": "What clinical conditions cause sudden high arterial line pressure during cardiopulmonary bypass?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-24",
+        "category": "Prime & Dilution",
+        "question": "What is the typical composition of an adult cardiopulmonary bypass circuit prime?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "CASE-25",
+        "category": "Prime & Dilution",
+        "question": "What is the minimum acceptable hematocrit (Hct) threshold on cardiopulmonary bypass?",
+        "status": "TRUE POSITIVE (Accurate)",
+        "grounded": true,
+        "citations_count": 3
+      },
+      {
+        "id": "NEG-01",
+        "category": "Negative Control (Dermatology)",
+        "question": "What are the first-line systemic biologic therapies for moderate-to-severe plaque psoriasis with psoriatic arthritis?",
+        "status": "TRUE NEGATIVE (Correct Refusal)",
+        "grounded": false,
+        "citations_count": 0
+      },
+      {
+        "id": "NEG-02",
+        "category": "Negative Control (General Surgery)",
+        "question": "How is the Critical View of Safety achieved during a laparoscopic cholecystectomy for gallstones?",
+        "status": "TRUE NEGATIVE (Correct Refusal)",
+        "grounded": false,
+        "citations_count": 0
+      },
+      {
+        "id": "NEG-03",
+        "category": "Negative Control (Physics)",
+        "question": "Explain the derivation of the Schwarzschild metric from Einstein's vacuum field equations in general relativity.",
+        "status": "TRUE NEGATIVE (Correct Refusal)",
+        "grounded": false,
+        "citations_count": 0
+      },
+      {
+        "id": "NEG-04",
+        "category": "Negative Control (Computer Science)",
+        "question": "What is the mathematical proof of preimage and collision resistance in SHA-256 cryptographic hashing algorithms?",
+        "status": "TRUE NEGATIVE (Correct Refusal)",
+        "grounded": false,
+        "citations_count": 0
+      },
+      {
+        "id": "NEG-05",
+        "category": "Negative Control (Plant Biology)",
+        "question": "Explain the Z-scheme electron transport chain and oxygen-evolving complex of photosystem II in plant thylakoids.",
+        "status": "TRUE NEGATIVE (Correct Refusal)",
+        "grounded": false,
+        "citations_count": 0
+      }
+    ]
+  },
+  "elapsed_seconds": 555.4917390346527
+}

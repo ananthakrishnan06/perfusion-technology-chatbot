@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en" class="h-screen overflow-hidden">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Perfusion AI — Cardiovascular Decision Support & Knowledge Workspace</title>
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <link rel="stylesheet" href="/app/style.css?v=20261017_bg2">
+  <style>
+    /* Medical Illustration Wallpaper */
+    body {
+      background-color: #FAF8F4 !important;
+      background-image: url('/app/images/bg_perfusion.png?v=2') !important;
+      background-size: cover !important;
+      background-position: center center !important;
+      background-repeat: no-repeat !important;
+      background-attachment: fixed !important;
+    }
+    .perfusion-canvas-bg {
+      background-color: transparent !important;
+      background-image: url('/app/images/bg_perfusion.png?v=2') !important;
+      background-size: cover !important;
+      background-position: center center !important;
+      background-repeat: no-repeat !important;
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            warmbg: '#FAF8F4',
+            cream: '#FAF8F5',
+            sand: '#F5D5A8',
+            sandbadge: '#F4E8D6',
+            subtleborder: '#EAE5DC',
+            darktext: '#18181B',
+            medicalteal: '#0D9488',
+            clinicalnavy: '#0F4C81'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="text-darktext flex flex-col h-screen overflow-hidden antialiased select-text" style="background-color: #FAF8F4; background-image: url('/app/images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
+
+
+  <!-- DEDICATED FULL-VIEWPORT LOGIN INTERFACE (MATCHING EXACT EDITORIAL CLINICAL DESIGN) -->
+  <div id="view-login" class="fixed inset-0 z-50 flex flex-col justify-between overflow-y-auto min-h-screen bg-warmbg text-darktext select-none" style="background-color: #FAF8F4; background-image: url('/app/images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
+    
+    <!-- Top Header -->
+    <header class="w-full px-6 sm:px-10 py-5 flex items-center justify-between z-10 flex-shrink-0">
+      <!-- Left Logo & Monospace Tracking Subtitle -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="bypassLoginToGuest()">
+        <div class="w-8 h-8 rounded-lg bg-[#18181B] text-amber-300 flex items-center justify-center shadow-xs">
+          <i data-lucide="activity" class="w-4 h-4 text-amber-300"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold font-editorial text-stone-900 leading-none">Perfusion AI</h1>
+          <p class="text-[9px] font-mono-code tracking-[0.22em] text-stone-500 uppercase mt-0.5 font-medium">Cardiovascular Decision Support</p>
+        </div>
+      </div>
+
+      <!-- Right Evidence Badge Pill -->
+      <div class="border border-stone-300/80 bg-white/70 backdrop-blur-xs rounded-full px-3.5 py-1.5 flex items-center space-x-2 text-stone-700 shadow-xs">
+        <i data-lucide="shield-check" class="w-3.5 h-3.5 text-stone-700"></i>
+        <span class="text-[10px] font-mono-code tracking-[0.16em] uppercase font-semibold text-stone-700">Evidence Informed • Knowledge Support</span>
+      </div>
+    </header>
+
+    <!-- Centered Card Container -->
+    <main class="flex-1 flex items-center justify-center py-6 px-4">
+      <div class="max-w-[430px] w-full bg-white/95 backdrop-blur-md rounded-2xl border border-stone-200/90 shadow-xl shadow-stone-900/5 p-7 sm:p-9 text-center">
+        
+        <!-- Minimalist Gold Shield Emblem -->
+        <div class="w-12 h-12 rounded-full bg-amber-50/70 border border-amber-200/70 flex items-center justify-center mx-auto mb-3.5">
+          <i data-lucide="shield" class="w-6 h-6 text-amber-600 stroke-[1.6]"></i>
+        </div>
+
+        <!-- Monospace Eyebrow Divider -->
+        <div class="flex items-center justify-center space-x-3 mb-2.5">
+          <div class="h-px bg-stone-200 flex-1"></div>
+          <span class="font-mono-code text-[10px] tracking-[0.22em] text-stone-400 uppercase font-semibold">SECURE CLINICAL ACCESS</span>
+          <div class="h-px bg-stone-200 flex-1"></div>
+        </div>
+
+        <!-- 1. SIGN IN FORM -->
+        <div id="auth-box-login">
+          <div>
+            <h2 class="font-editorial text-3xl font-normal text-stone-900 tracking-tight mb-1">Welcome back</h2>
+            <p class="text-xs text-stone-500 font-sans mb-5">Sign in to your perfusion knowledge workspace.</p>
+          </div>
+
+          <form onsubmit="handleEmailPasswordLogin(event)" class="space-y-3.5 text-left">
+            <!-- Email -->
+            <div>
+              <label class="block text-[11px] font-medium text-stone-700 font-sans mb-1.5">Institutional Email</label>
+              <div class="relative flex items-center">
+                <span class="absolute left-3.5 text-stone-400 pointer-events-none">
+                  <i data-lucide="mail" class="w-4 h-4"></i>
+                </span>
+                <input 
+                  id="login-email" 
+                  type="email" 
+                  required 
+                  placeholder="you@institution.edu" 
+                  class="w-full bg-[#FAF8F5]/60 border border-stone-200 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-stone-900 placeholder:text-stone-400 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition font-sans"
+                />
+              </div>
+            </div>
+
+            <!-- Password -->
+            <div>
+              <label class="block text-[11px] font-medium text-stone-700 font-sans mb-1.5">Password</label>
+              <div class="relative flex items-center">
+                <span class="absolute left-3.5 text-stone-400 pointer-events-none">
+                  <i data-lucide="lock" class="w-4 h-4"></i>
+                </span>
+                <input 
+                  id="login-password" 
+                  type="password" 
+                  required 
+                  placeholder="Enter your password" 
+                  class="w-full bg-[#FAF8F5]/60 border border-stone-200 rounded-xl pl-10 pr-10 py-2.5 text-xs text-stone-900 placeholder:text-stone-400 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition font-sans"
+                />
+                <button 
+                  type="button" 
+                  onclick="togglePasswordVisibility('login-password', 'login-pwd-eye')" 
+                  class="absolute right-3.5 text-stone-400 hover:text-stone-700 transition cursor-pointer"
+                  title="Toggle password visibility"
+                >
+                  <i id="login-pwd-eye" data-lucide="eye" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Options Row: Remember Me & Forgot Password -->
+            <div class="flex items-center justify-between text-xs pt-0.5">
+              <label class="flex items-center space-x-2 cursor-pointer text-stone-600 select-none">
+                <input id="login-remember" type="checkbox" checked class="w-3.5 h-3.5 rounded border-stone-300 text-stone-900 accent-stone-900 focus:ring-stone-900" />
+                <span class="text-xs text-stone-600">Remember me</span>
+              </label>
+              <a href="#" onclick="handleForgotPassword(event)" class="text-xs text-stone-500 hover:text-stone-900 italic transition">Forgot password?</a>
+            </div>
+
+            <!-- Main Sign-In Button -->
+            <button 
+              type="submit" 
+              id="btn-login-submit"
+              class="w-full bg-[#18181B] hover:bg-stone-800 active:scale-[0.99] text-white font-medium text-xs sm:text-sm py-2.5 rounded-xl shadow-xs transition flex items-center justify-center space-x-2 cursor-pointer mt-1.5"
+            >
+              <span>Sign in</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+          </form>
+
+          <!-- Divider: OR CONTINUE WITH -->
+          <div class="flex items-center justify-center space-x-3 my-4">
+            <div class="h-px bg-stone-200 flex-1"></div>
+            <span class="font-mono-code text-[10px] tracking-[0.2em] text-stone-400 uppercase font-semibold">OR CONTINUE WITH</span>
+            <div class="h-px bg-stone-200 flex-1"></div>
+          </div>
+
+          <!-- Continue with Google Button -->
+          <button 
+            type="button" 
+            id="btn-google-signin"
+            onclick="initiateGoogleSignIn()" 
+            class="w-full bg-white hover:bg-stone-50 active:scale-[0.99] border border-stone-200 hover:border-stone-300 text-stone-700 text-xs sm:text-sm font-medium py-2.5 rounded-xl shadow-xs transition flex items-center justify-center space-x-2.5 cursor-pointer"
+          >
+            <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.27 21.44 7.33 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.04 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.27 2.56 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+            </svg>
+            <span>Continue with Google</span>
+          </button>
+
+          <!-- Toggle to Create Account -->
+          <div class="pt-3 text-center text-xs text-stone-500 font-sans">
+            <span>New to Perfusion AI? </span>
+            <a href="#" onclick="toggleAuthBox('register', event)" class="font-medium text-stone-900 hover:underline">Create an account</a>
+          </div>
+        </div>
+
+        <!-- 2. CREATE ACCOUNT FORM (TOGGLED) -->
+        <div id="auth-box-register" class="hidden space-y-3.5 text-left">
+          <div class="text-center">
+            <h2 class="font-editorial text-3xl font-normal text-stone-900 tracking-tight mb-1">Create account</h2>
+            <p class="text-xs text-stone-500 font-sans mb-4">Register for clinical perfusion knowledge workspace.</p>
+          </div>
+
+          <form onsubmit="handleRegister(event)" class="space-y-3 text-left">
+            <div>
+              <label class="block text-[11px] font-medium text-stone-700 font-sans mb-1">Full Name</label>
+              <div class="relative flex items-center">
+                <span class="absolute left-3.5 text-stone-400 pointer-events-none"><i data-lucide="user" class="w-4 h-4"></i></span>
+                <input id="reg-name" type="text" required placeholder="Dr. Eleanor Vance, CCP" class="w-full bg-[#FAF8F5]/60 border border-stone-200 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-stone-900 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition font-sans" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-medium text-stone-700 font-sans mb-1">Institutional Email</label>
+              <div class="relative flex items-center">
+                <span class="absolute left-3.5 text-stone-400 pointer-events-none"><i data-lucide="mail" class="w-4 h-4"></i></span>
+                <input id="reg-email" type="email" required placeholder="clinician@institution.edu" class="w-full bg-[#FAF8F5]/60 border border-stone-200 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-stone-900 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition font-sans" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-medium text-stone-700 font-sans mb-1">Clinical Role</label>
+              <select id="reg-role" class="w-full bg-[#FAF8F5]/60 border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs text-stone-900 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition font-sans">
+                <option value="Clinical Perfusionist">Clinical Perfusionist</option>
+                <option value="Perfusion Student / Trainee">Perfusion Student / Trainee</option>
+                <option value="Cardiothoracic Surgeon">Cardiothoracic Surgeon</option>
+                <option value="Cardiac Anesthesiologist">Cardiac Anesthesiologist</option>
+                <option value="ICU / ECMO Specialist">ICU / ECMO Specialist</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-medium text-stone-700 font-sans mb-1">Password</label>
+              <div class="relative flex items-center">
+                <span class="absolute left-3.5 text-stone-400 pointer-events-none"><i data-lucide="lock" class="w-4 h-4"></i></span>
+                <input id="reg-password" type="password" required minlength="4" placeholder="Choose a secure password" class="w-full bg-[#FAF8F5]/60 border border-stone-200 rounded-xl pl-10 pr-10 py-2.5 text-xs text-stone-900 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition font-sans" />
+                <button type="button" onclick="togglePasswordVisibility('reg-password', 'reg-pwd-eye')" class="absolute right-3.5 text-stone-400 hover:text-stone-700 transition cursor-pointer">
+                  <i id="reg-pwd-eye" data-lucide="eye" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+
+            <button type="submit" id="btn-reg-submit" class="w-full bg-[#18181B] hover:bg-stone-800 active:scale-[0.99] text-white font-medium text-xs sm:text-sm py-2.5 rounded-xl shadow-xs transition flex items-center justify-center space-x-2 cursor-pointer mt-1">
+              <span>Create account</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+          </form>
+
+          <div class="pt-2 text-center text-xs text-stone-500 font-sans">
+            <span>Already have an account? </span>
+            <a href="#" onclick="toggleAuthBox('login', event)" class="font-medium text-stone-900 hover:underline">Sign in</a>
+          </div>
+        </div>
+
+        <!-- Guest Workspace Link -->
+        <div class="mt-4 pt-3.5 border-t border-stone-100 flex items-center justify-center">
+          <button type="button" onclick="bypassLoginToGuest()" class="text-[11px] font-mono-code text-stone-500 hover:text-stone-900 flex items-center space-x-1 cursor-pointer transition">
+            <span>Explore workspace as guest</span>
+            <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-stone-400"></i>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Page Footer -->
+    <footer class="py-4 text-center space-y-1 z-10 flex-shrink-0">
+      <p class="text-[11px] text-stone-400 font-sans">For educational and clinical knowledge support</p>
+      <div class="text-[10px] font-mono-code text-stone-400 space-x-2">
+        <a href="#" class="hover:text-stone-600 transition">Privacy</a>
+        <span>•</span>
+        <a href="#" class="hover:text-stone-600 transition">Terms</a>
+      </div>
+    </footer>
+  </div>
+
+  <!-- APP SHELL: SIDEBAR + MAIN CONTENT WORKSPACE -->
+  <div id="app-shell" class="flex-1 flex overflow-hidden min-h-0 w-full hidden">
+
+    <!-- LEFT CLINICAL SIDEBAR (STATIONARY / PINNED) -->
+    <aside class="w-64 border-r border-subtleborder bg-warmbg/90 backdrop-blur-md flex flex-col justify-between py-5 px-3.5 flex-shrink-0 h-full overflow-y-auto select-none z-10">
+      <div class="space-y-6">
+        <!-- Logo -->
+        <div class="px-2 flex items-center space-x-3 cursor-pointer" onclick="switchView('home')">
+          <div class="w-9 h-9 rounded-lg bg-darktext text-white flex items-center justify-center shadow-sm">
+            <i data-lucide="activity" class="w-5 h-5 text-amber-300"></i>
+          </div>
+          <div>
+            <h1 class="text-base font-bold tracking-tight text-darktext leading-none flex items-center gap-1.5">
+              Perfusion AI
+            </h1>
+            <p class="text-[9px] font-mono-code tracking-widest text-neutral-500 uppercase mt-1">Cardiovascular Decision Support</p>
+          </div>
+        </div>
+
+        <!-- Navigation Menu -->
+        <div>
+          <p class="text-[10px] font-mono-code tracking-widest text-neutral-400 uppercase px-2 mb-2 font-semibold">Clinical Modules</p>
+          <nav class="space-y-1">
+            <button id="nav-home" onclick="switchView('home')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all bg-white shadow-sm border border-subtleborder text-darktext">
+              <i data-lucide="layout-grid" class="w-4 h-4 text-neutral-700"></i>
+              <span>Home</span>
+            </button>
+
+            <button id="nav-chat" onclick="switchView('chat')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60">
+              <div class="flex items-center space-x-3">
+                <i data-lucide="message-square" class="w-4 h-4 text-neutral-500"></i>
+                <span>Ask Perfusion AI</span>
+              </div>
+              <span class="text-[9px] font-mono-code bg-sandbadge text-neutral-800 px-1.5 py-0.5 rounded font-semibold tracking-wider">AI CORE</span>
+            </button>
+
+            <button id="nav-past-chats" onclick="switchView('chat'); toggleConversationsDrawer();" class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all text-neutral-700 hover:text-darktext hover:bg-neutral-100/60 cursor-pointer">
+              <div class="flex items-center space-x-3">
+                <i data-lucide="history" class="w-4 h-4 text-amber-700"></i>
+                <span class="font-medium">Past Chats</span>
+              </div>
+              <span class="text-[9px] font-mono-code bg-sandbadge text-neutral-800 px-1.5 py-0.5 rounded font-semibold tracking-wider">HISTORY</span>
+            </button>
+
+            <button id="nav-library" onclick="switchView('library')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60">
+              <i data-lucide="book-open" class="w-4 h-4 text-neutral-500"></i>
+              <span>Knowledge Library</span>
+            </button>
+
+            <button id="nav-calculators" onclick="switchView('calculators')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60">
+              <i data-lucide="calculator" class="w-4 h-4 text-neutral-500"></i>
+              <span>Calculators & Reference</span>
+            </button>
+
+            <button id="nav-cases" onclick="switchView('cases')" class="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-neutral-600 hover:text-darktext hover:bg-neutral-100/60">
+              <i data-lucide="file-question" class="w-4 h-4 text-neutral-500"></i>
+              <span>Cases & Learning (MCQs)</span>
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      <!-- Bottom Status & System Health -->
+      <div class="border-t border-subtleborder pt-4 px-2 space-y-2">
+        <div class="flex items-center justify-between text-xs text-neutral-500 font-mono-code">
+          <span class="flex items-center space-x-1.5">
+            <span id="health-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span id="health-status">System Online</span>
+          </span>
+        </div>
+        <p class="text-[10px] text-neutral-400 leading-tight">Accredited Perfusion Knowledge Base.</p>
+      </div>
+    </aside>
+
+    <!-- MAIN INTERACTIVE CONTENT AREA (PINNED HEADER, ANCHORED SIDEBAR, MEDICAL ILLUSTRATION CANVAS) -->
+    <main class="flex-1 flex flex-col h-full overflow-hidden min-h-0 relative perfusion-canvas-bg" style="background-image: url('/app/images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat;">
+
+      <!-- TOP SEARCH & VERIFICATION BAR (PINNED AT TOP) -->
+      <div class="w-full border-b border-subtleborder bg-warmbg/85 backdrop-blur-md px-8 py-3.5 flex items-center justify-between flex-shrink-0 z-10">
+        <!-- Verification Badge & Profile from Screenshot -->
+        <div class="flex items-center space-x-4 ml-auto">
+          <div class="hidden lg:flex items-center space-x-2 bg-white border border-subtleborder rounded-lg px-3 py-1.5 shadow-sm">
+            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i>
+            <div class="text-left">
+              <p class="text-[9px] font-mono-code text-neutral-400 uppercase tracking-wider font-semibold leading-none">Evidence Verified</p>
+              <p class="text-xs font-semibold text-neutral-800 leading-none mt-0.5">99.4% Citation Match</p>
+            </div>
+          </div>
+
+          <!-- Authentication Profile & Google Sign-In Container -->
+          <div id="auth-container" class="relative pl-3 border-l border-subtleborder">
+            <!-- State 1: Logged Out (Sign In Button opening Login Screen) -->
+            <div id="auth-logged-out" class="flex items-center">
+              <button 
+                onclick="openLoginScreen()"
+                class="inline-flex items-center space-x-2 bg-white hover:bg-neutral-50 text-neutral-800 border border-subtleborder px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition active:scale-95 cursor-pointer"
+                title="Sign in to Perfusion AI"
+              >
+                <i data-lucide="log-in" class="w-3.5 h-3.5 text-stone-700"></i>
+                <span>Sign in</span>
+              </button>
+            </div>
+
+            <!-- State 2: Logged In (User Avatar, Display Name, Dropdown) -->
+            <div id="auth-logged-in" class="hidden flex items-center space-x-2.5 cursor-pointer py-0.5" onclick="toggleUserDropdown()">
+              <div class="relative">
+                <img id="user-avatar-img" src="" alt="Avatar" class="w-8 h-8 rounded-full object-cover border border-subtleborder shadow-xs hidden" />
+                <div id="user-avatar-initials" class="w-8 h-8 rounded-full bg-darktext text-amber-300 flex items-center justify-center font-bold text-xs shadow-xs">
+                  U
+                </div>
+                <span class="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+              </div>
+              <div class="hidden sm:block text-left leading-tight">
+                <p id="user-display-name" class="text-xs font-semibold text-darktext truncate max-w-[130px]">Clinician</p>
+                <p id="user-display-role" class="text-[10px] text-neutral-500 font-mono-code truncate max-w-[130px]">Perfusionist</p>
+              </div>
+              <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-neutral-400"></i>
+            </div>
+
+            <!-- Dropdown Menu -->
+            <div id="user-dropdown-menu" class="hidden absolute right-0 mt-2 w-60 bg-white border border-subtleborder rounded-2xl shadow-xl py-2 z-50 text-xs animate-in fade-in slide-in-from-top-2 duration-150">
+              <div class="px-4 py-2.5 border-b border-subtleborder/60">
+                <p class="text-[9px] font-mono-code uppercase tracking-wider text-neutral-400 font-semibold">Active Session</p>
+                <p id="dropdown-user-name" class="font-bold text-neutral-900 truncate mt-0.5">Clinician</p>
+                <p id="dropdown-user-email" class="text-[11px] text-neutral-500 truncate font-mono-code">user@institution.org</p>
+              </div>
+              <div class="py-1">
+                <button onclick="handleSignOut()" class="w-full text-left px-4 py-2 text-rose-600 hover:bg-rose-50 transition flex items-center space-x-2 cursor-pointer font-medium">
+                  <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: ASK PERFUSION AI (DEDICATED CONVERSATIONAL CHATROOM - PINNED LAYOUT) -->
+      <section id="view-chat" class="hidden flex-1 flex flex-col h-full overflow-hidden max-w-4xl w-full mx-auto px-6 py-4 min-h-0">
+        <!-- Chatroom Header -->
+        <div class="flex items-center justify-between border-b border-subtleborder pb-3 flex-shrink-0">
+          <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-darktext text-white flex items-center justify-center shadow-xs">
+              <i data-lucide="message-square" class="w-4 h-4 text-amber-300"></i>
+            </div>
+            <div>
+              <div class="flex items-center space-x-2">
+                <h2 class="text-base font-editorial font-bold text-neutral-900 leading-none">Perfusion AI Chatroom</h2>
+                <span class="text-[9px] font-mono-code bg-sandbadge text-neutral-800 px-1.5 py-0.5 rounded font-semibold">MULTI-TURN</span>
+              </div>
+              <p id="chat-session-subtitle" class="text-[11px] text-neutral-500 font-mono-code mt-0.5 truncate max-w-md">Evidence Grounded • 799-Page Textbook Active</p>
+            </div>
+          </div>
+
+          <!-- Actions: Depth Selector & Clear Chat -->
+          <div class="flex items-center space-x-3">
+            <div class="hidden sm:inline-flex p-0.5 rounded-lg bg-neutral-200/50 text-xs font-mono-code">
+              <button id="chat-depth-overview" onclick="setChatDepth('overview')" class="px-2 py-0.5 rounded-md text-neutral-600 hover:text-darktext transition text-[11px]">Overview</button>
+              <button id="chat-depth-detailed" onclick="setChatDepth('detailed')" class="px-2 py-0.5 rounded-md bg-sand font-semibold text-neutral-900 shadow-sm transition text-[11px]">Detailed</button>
+              <button id="chat-depth-student" onclick="setChatDepth('student')" class="px-2 py-0.5 rounded-md text-neutral-600 hover:text-darktext transition text-[11px]">Student</button>
+            </div>
+
+            <button onclick="clearChat()" class="inline-flex items-center space-x-1.5 text-xs text-neutral-500 hover:text-neutral-800 bg-white border border-subtleborder px-2.5 py-1.5 rounded-lg transition shadow-xs" title="Start a fresh chat">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+              <span class="font-mono-code text-[11px]">New Chat</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat History Scrollable Area (ONLY THIS SCROLLS IN CHAT) -->
+        <div id="chat-messages" class="flex-1 overflow-y-auto py-4 space-y-4 pr-1 min-h-0">
+          <!-- Initial Assistant Greeting -->
+          <div class="flex items-start space-x-3 max-w-3xl">
+            <div class="w-8 h-8 rounded-lg bg-[#18181B] text-amber-300 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
+              <i data-lucide="activity" class="w-4 h-4"></i>
+            </div>
+            <div class="bg-white border border-subtleborder rounded-2xl rounded-tl-sm p-5 shadow-xs space-y-3 flex-1 text-xs text-neutral-800">
+              <div class="flex items-center justify-between border-b border-subtleborder/60 pb-2">
+                <span class="font-mono-code font-bold text-neutral-900 text-[11px]">Perfusion AI Assistant</span>
+              </div>
+              <p class="leading-relaxed">
+                Welcome to the clinical decision support chatroom. I am grounded directly in your uploaded Perfusion Technology curriculum and textbooks. You can ask detailed clinical questions, request procedure walk-throughs, or explore complex hemodynamics with full multi-turn follow-ups.
+              </p>
+              <div class="space-y-1.5 pt-1">
+                <p class="text-[10px] font-mono-code uppercase tracking-wider text-neutral-400 font-semibold">Suggested Starters:</p>
+                <div class="flex flex-wrap gap-1.5">
+                  <button onclick="sendSuggestedMessage('Walk me through the CPB circuit de-airing procedure and pre-bypass safety checks.')" class="bg-[#FAF8F5] hover:bg-[#F4E8D6] text-neutral-700 border border-subtleborder rounded-lg px-2.5 py-1 text-[11px] transition text-left">
+                    • Pre-bypass safety checks & de-airing
+                  </button>
+                  <button onclick="sendSuggestedMessage('What are the physiological causes and management of acute high arterial line pressure during CPB? (5 marks)')" class="bg-[#FAF8F5] hover:bg-[#F4E8D6] text-neutral-700 border border-subtleborder rounded-lg px-2.5 py-1 text-[11px] transition text-left">
+                    • Acute high arterial line pressure (5 marks)
+                  </button>
+                  <button onclick="sendSuggestedMessage('Describe Cardiopulmonary Bypass circuits, oxygenator types, and operative conduct (10 marks)')" class="bg-[#FAF8F5] hover:bg-[#F4E8D6] text-neutral-700 border border-subtleborder rounded-lg px-2.5 py-1 text-[11px] transition text-left">
+                    • CPB Circuit & Conduct (10 marks essay)
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Input Bar (PINNED AT BOTTOM) -->
+        <div class="border-t border-subtleborder pt-3 flex-shrink-0">
+          <div class="bg-cream border border-subtleborder rounded-2xl shadow-sm p-3 focus-within:ring-2 focus-within:ring-neutral-400/50 transition">
+            <div class="flex items-end space-x-2">
+              <textarea 
+                id="chat-input"
+                rows="2"
+                placeholder="Ask a question or specify exam marks e.g. 'Describe oxygenators (5 marks)', 'What is ACT (3M)'... (Enter to send)"
+                class="w-full bg-transparent resize-none text-xs sm:text-sm text-darktext placeholder:text-neutral-400 focus:outline-none leading-relaxed"
+                onkeydown="handleChatKeyDown(event)"
+              ></textarea>
+              <button 
+                id="btn-chat-send"
+                onclick="sendChatMessage()"
+                class="bg-darktext hover:bg-neutral-800 text-white rounded-xl p-2.5 flex-shrink-0 transition active:scale-95 shadow-xs"
+                title="Send message"
+              >
+                <i data-lucide="send" class="w-4 h-4"></i>
+              </button>
+            </div>
+            <div class="flex items-center justify-between text-[10px] font-mono-code text-neutral-400 pt-2 px-1 border-t border-subtleborder/40 mt-1">
+              <span>Verified Clinical Decision Support</span>
+              <span>Shift+Enter for newline</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCROLLABLE WORKSPACE CONTENT (HOME, CASES, LIBRARY, CALCULATORS) -->
+      <div id="content-scroll-area" class="flex-1 overflow-y-auto min-h-0 flex flex-col">
+
+        <!-- VIEW: HOME WORKSPACE (ABOUT THE PLATFORM) -->
+        <section id="view-home" class="flex-1 px-6 sm:px-10 py-10 max-w-6xl w-full mx-auto space-y-12">
+
+          <!-- HERO CONTAINER -->
+          <div class="text-center space-y-4 pt-2">
+            <div class="inline-flex items-center space-x-2 text-[10px] font-mono-code uppercase tracking-widest text-neutral-600 bg-sandbadge/60 border border-amber-200/60 px-3 py-1 rounded-full">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              <span class="font-semibold text-neutral-800">Cardiovascular Perfusion Clinical Intelligence</span>
+            </div>
+
+            <h2 class="text-4xl sm:text-5xl font-editorial font-bold tracking-tight text-neutral-900 max-w-3xl mx-auto leading-tight">
+              Evidence-Grounded Perfusion Decision Support & Knowledge
+            </h2>
+
+            <p class="text-sm sm:text-base text-neutral-600 max-w-2xl mx-auto font-normal leading-relaxed">
+              A specialized clinical decision platform designed for clinical perfusionists, cardiothoracic surgical teams, and trainees. Grounded strictly in indexed cardiopulmonary bypass curricula, textbooks, and guidelines—with zero hallucination and page-level citation verification.
+            </p>
+
+            <!-- Hero Action Buttons -->
+            <div class="flex flex-wrap items-center justify-center gap-3 pt-3">
+              <button onclick="switchView('chat')" class="bg-darktext hover:bg-neutral-800 text-white text-xs font-semibold px-5 py-2.5 rounded-xl flex items-center space-x-2 shadow-sm transition active:scale-95">
+                <i data-lucide="message-square" class="w-4 h-4 text-amber-300"></i>
+                <span>Ask Perfusion AI</span>
+                <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
+              </button>
+
+              <button onclick="switchView('calculators')" class="bg-white hover:bg-neutral-50 text-neutral-800 border border-subtleborder text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-xs transition active:scale-95">
+                <i data-lucide="calculator" class="w-4 h-4 text-amber-700"></i>
+                <span>Clinical Calculators</span>
+              </button>
+
+              <button onclick="switchView('library')" class="bg-white hover:bg-neutral-50 text-neutral-800 border border-subtleborder text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-xs transition active:scale-95">
+                <i data-lucide="book-open" class="w-4 h-4 text-neutral-500"></i>
+                <span>Knowledge Library</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- TRUST & ARCHITECTURE HIGHLIGHT STRIP (3 PILLARS) -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            <div class="bg-white border border-subtleborder rounded-xl p-4 space-y-1 shadow-xs">
+              <div class="flex items-center space-x-2 text-emerald-700">
+                <i data-lucide="shield-check" class="w-4 h-4"></i>
+                <span class="text-[10px] font-mono-code font-bold uppercase tracking-wider">100% Enclosed</span>
+              </div>
+              <p class="text-sm font-editorial font-bold text-darktext">Zero Hallucination</p>
+              <p class="text-[11px] text-neutral-500 leading-snug">Answers synthesized exclusively from indexed textbooks and institutional protocols.</p>
+            </div>
+
+            <div class="bg-white border border-subtleborder rounded-xl p-4 space-y-1 shadow-xs">
+              <div class="flex items-center space-x-2 text-amber-700">
+                <i data-lucide="file-check" class="w-4 h-4"></i>
+                <span class="text-[10px] font-mono-code font-bold uppercase tracking-wider">Page Precision</span>
+              </div>
+              <p class="text-sm font-editorial font-bold text-darktext">Authentic Citations</p>
+              <p class="text-[11px] text-neutral-500 leading-snug">Every recommendation cites exact textbook and monograph page numbers.</p>
+            </div>
+
+            <div class="bg-white border border-subtleborder rounded-xl p-4 space-y-1 shadow-xs">
+              <div class="flex items-center space-x-2 text-neutral-700">
+                <i data-lucide="zap" class="w-4 h-4"></i>
+                <span class="text-[10px] font-mono-code font-bold uppercase tracking-wider">Real-Time</span>
+              </div>
+              <p class="text-sm font-editorial font-bold text-darktext">Rapid Clinical Response</p>
+              <p class="text-[11px] text-neutral-500 leading-snug">Instant evidence retrieval and synthesis for time-critical perfusion decisions.</p>
+            </div>
+          </div>
+
+          <!-- WORKSPACE CAPABILITIES OVERVIEW -->
+          <div class="space-y-4">
+            <div class="border-b border-subtleborder pb-3">
+              <h3 class="text-xs font-mono-code uppercase tracking-wider font-bold text-neutral-700">What You Can Do in This Workspace</h3>
+              <p class="text-xs text-neutral-500 mt-0.5">Explore the clinical modules tailored for the operating room, intensive care, and academic study.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Feature 1: Ask Perfusion AI -->
+              <div onclick="switchView('chat')" class="module-card bg-white border border-subtleborder rounded-xl p-5 flex flex-col justify-between cursor-pointer space-y-4 hover:border-neutral-400 transition group shadow-xs">
+                <div class="space-y-2.5">
+                  <div class="w-9 h-9 rounded-lg bg-neutral-900 text-amber-300 flex items-center justify-center shadow-xs">
+                    <i data-lucide="message-square" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <h4 class="text-base font-editorial font-bold text-neutral-900">Ask Perfusion AI (Clinical Chatroom)</h4>
+                    <p class="text-xs text-neutral-600 mt-1 leading-relaxed">
+                      Consult an evidence-grounded AI trained on cardiopulmonary bypass physiology, circuit de-airing, cannulation strategies, and intraoperative troubleshooting. Features multi-turn memory and interactive citation drawer inspection.
+                    </p>
+                  </div>
+                </div>
+                <div class="flex items-center text-xs font-semibold text-darktext group-hover:text-amber-800 transition space-x-1 pt-1 font-mono-code">
+                  <span>Enter Clinical Chatroom</span>
+                  <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                </div>
+              </div>
+
+              <!-- Feature 2: Calculators & Reference -->
+              <div onclick="switchView('calculators')" class="module-card bg-white border border-subtleborder rounded-xl p-5 flex flex-col justify-between cursor-pointer space-y-4 hover:border-neutral-400 transition group shadow-xs">
+                <div class="space-y-2.5">
+                  <div class="w-9 h-9 rounded-lg bg-neutral-900 text-amber-300 flex items-center justify-center shadow-xs">
+                    <i data-lucide="calculator" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <h4 class="text-base font-editorial font-bold text-neutral-900">Point-of-Care Flow & BSA Calculators</h4>
+                    <p class="text-xs text-neutral-600 mt-1 leading-relaxed">
+                      Instant bedside calculation of Mosteller Body Surface Area (BSA) and target cardiopulmonary bypass pump flow rates (L/min & mL/min) with preset physiological Cardiac Index values for normothermia and hypothermia.
+                    </p>
+                  </div>
+                </div>
+                <div class="flex items-center text-xs font-semibold text-darktext group-hover:text-amber-800 transition space-x-1 pt-1 font-mono-code">
+                  <span>Open Flow Calculator</span>
+                  <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                </div>
+              </div>
+
+              <!-- Feature 3: Knowledge Library -->
+              <div onclick="switchView('library')" class="module-card bg-white border border-subtleborder rounded-xl p-5 flex flex-col justify-between cursor-pointer space-y-4 hover:border-neutral-400 transition group shadow-xs">
+                <div class="space-y-2.5">
+                  <div class="w-9 h-9 rounded-lg bg-neutral-900 text-amber-300 flex items-center justify-center shadow-xs">
+                    <i data-lucide="book-open" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <h4 class="text-base font-editorial font-bold text-neutral-900">Perfusion Compendium & Monographs</h4>
+                    <p class="text-xs text-neutral-600 mt-1 leading-relaxed">
+                      Review all indexed curriculum textbooks, surgical monographs, and institutional guideline manuals. Inspect document total pages, indexing health, and explore chapter-by-chapter summaries.
+                    </p>
+                  </div>
+                </div>
+                <div class="flex items-center text-xs font-semibold text-darktext group-hover:text-amber-800 transition space-x-1 pt-1 font-mono-code">
+                  <span>Browse Textbooks & Manuals</span>
+                  <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                </div>
+              </div>
+
+              <!-- Feature 4: Exam & Practice MCQs -->
+              <div onclick="switchView('cases')" class="module-card bg-white border border-subtleborder rounded-xl p-5 flex flex-col justify-between cursor-pointer space-y-4 hover:border-neutral-400 transition group shadow-xs">
+                <div class="space-y-2.5">
+                  <div class="w-9 h-9 rounded-lg bg-neutral-900 text-amber-300 flex items-center justify-center shadow-xs">
+                    <i data-lucide="file-question" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <h4 class="text-base font-editorial font-bold text-neutral-900">Board Exam Practice & Clinical MCQs</h4>
+                    <p class="text-xs text-neutral-600 mt-1 leading-relaxed">
+                      Generate high-yield multiple-choice test questions derived from the 799-page curriculum to prepare for certification exams, test comprehension on oxygenator physics, and practice scenario decision-making.
+                    </p>
+                  </div>
+                </div>
+                <div class="flex items-center text-xs font-semibold text-darktext group-hover:text-amber-800 transition space-x-1 pt-1 font-mono-code">
+                  <span>Practice Questions</span>
+                  <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION: ABOUT PERFUSION TECHNOLOGY & CURRICULUM DOMAINS -->
+          <div class="space-y-6 pt-2">
+            <!-- Section Header -->
+            <div class="border-b border-subtleborder pb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div class="inline-flex items-center space-x-1.5 text-[10px] font-mono-code uppercase tracking-widest text-amber-800 font-semibold mb-1">
+                  <i data-lucide="book-marked" class="w-3.5 h-3.5"></i>
+                  <span>Clinical Science & Curriculum</span>
+                </div>
+                <h3 class="text-xl font-editorial font-bold text-neutral-900 leading-tight">
+                  What is Perfusion Technology?
+                </h3>
+              </div>
+              <span class="text-[10px] font-mono-code bg-sandbadge text-neutral-800 px-2.5 py-1 rounded-full font-semibold border border-amber-200/60">
+                Core Curriculum Domains
+              </span>
+            </div>
+
+            <!-- Descriptive Narrative about Perfusion Technology -->
+            <div class="bg-white border border-subtleborder rounded-2xl p-6 shadow-xs space-y-4">
+              <p class="text-sm text-neutral-700 leading-relaxed font-normal">
+                <strong class="font-semibold text-neutral-900">Perfusion Technology</strong> is the specialized clinical discipline dedicated to operating <strong class="text-neutral-900">extracorporeal circulation (ECC)</strong> systems—principally the <strong class="text-neutral-900">Heart-Lung Machine (HLM)</strong>. During open-heart and thoracic surgical procedures, the patient's heart must be temporarily arrested and the lungs immobilized. The clinical perfusionist assumes continuous responsibility for the patient's artificial respiration, systemic blood circulation, oxygen delivery, and organ preservation.
+              </p>
+
+              <!-- 4 Clinical Pillars of Perfusion Practice -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+                <div class="bg-[#FAF8F5] border border-subtleborder rounded-xl p-3.5 space-y-1">
+                  <span class="text-[10px] font-mono-code font-bold uppercase text-amber-800">01. Gas Exchange</span>
+                  <p class="text-xs font-semibold text-darktext">Membrane Oxygenation</p>
+                  <p class="text-[11px] text-neutral-500 leading-snug">Continuous transfer of O₂ and elimination of CO₂ across microporous hollow-fiber membranes.</p>
+                </div>
+
+                <div class="bg-[#FAF8F5] border border-subtleborder rounded-xl p-3.5 space-y-1">
+                  <span class="text-[10px] font-mono-code font-bold uppercase text-emerald-800">02. Anticoagulation</span>
+                  <p class="text-xs font-semibold text-darktext">ACT Monitoring (>480s)</p>
+                  <p class="text-[11px] text-neutral-500 leading-snug">Systemic heparinization preventing circuit thrombosis and precise protamine neutralization.</p>
+                </div>
+
+                <div class="bg-[#FAF8F5] border border-subtleborder rounded-xl p-3.5 space-y-1">
+                  <span class="text-[10px] font-mono-code font-bold uppercase text-clinicalnavy">03. Protection</span>
+                  <p class="text-xs font-semibold text-darktext">Cardioplegic Arrest</p>
+                  <p class="text-[11px] text-neutral-500 leading-snug">Infusing hyperkalemic hypothermic or warm blood cardioplegia to preserve ischemic myocardium.</p>
+                </div>
+
+                <div class="bg-[#FAF8F5] border border-subtleborder rounded-xl p-3.5 space-y-1">
+                  <span class="text-[10px] font-mono-code font-bold uppercase text-neutral-700">04. Hemodynamics</span>
+                  <p class="text-xs font-semibold text-darktext">DO₂ & SVR Balance</p>
+                  <p class="text-[11px] text-neutral-500 leading-snug">Managing pump flow rates, line pressures, systemic vascular resistance, and target organ perfusion.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Key Domain Cards (Using Only the Authentic Slide Images) -->
+            <div class="space-y-3 pt-2">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h4 class="text-sm font-mono-code uppercase tracking-wider font-bold text-neutral-800">
+                    Essential Perfusion Domains
+                  </h4>
+                  <p class="text-xs text-neutral-500">Curriculum illustrations referenced directly in clinical monographs and certification standards.</p>
+                </div>
+                <span class="text-[10px] font-mono-code text-neutral-400">Click card to inquire in chatroom</span>
+              </div>
+
+              <!-- 8 Core Domain Cards Grid -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                <!-- 1. CPB -->
+                <div onclick="setQueryAndExecute('Explain the fundamental components, circuits, and safe conduct of Cardiopulmonary Bypass (CPB).')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
+                  <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
+                    <img src="/app/images/cpb_bypass.jpg" alt="Cardiopulmonary Bypass (CPB)" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                  </div>
+                  <div class="p-3.5 space-y-1">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[9px] font-mono-code uppercase tracking-wider text-amber-800 font-bold">Extracorporeal Circuit</span>
+                      <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-neutral-400 group-hover:text-amber-800 transition"></i>
+                    </div>
+                    <h5 class="text-sm font-editorial font-bold text-neutral-900">Cardiopulmonary Bypass</h5>
+                    <p class="text-[11px] text-neutral-500 leading-snug">Venous reservoirs, arterial pumps, line filters, and bypass conduct.</p>
+                  </div>
+                </div>
+
+                <!-- 2. Oxygenation -->
+                <div onclick="setQueryAndExecute('Explain oxygenator gas exchange principles, FiO2, sweep gas flow, and factors affecting arterial oxygenation on CPB.')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
+                  <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
+                    <img src="/app/images/oxygenation.jpg" alt="Oxygenation" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                  </div>
+                  <div class="p-3.5 space-y-1">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[9px] font-mono-code uppercase tracking-wider text-emerald-800 font-bold">Gas Transfer</span>
+                      <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-neutral-400 group-hover:text-amber-800 transition"></i>
+                    </div>
+                    <h5 class="text-sm font-editorial font-bold text-neutral-900">Oxygenation & Sweep Gas</h5>
+                    <p class="text-[11px] text-neutral-500 leading-snug">Hollow-fiber gas exchange, PaO2 regulation, and CO2 clearance.</p>
+                  </div>
+                </div>
+
+                <!-- 3. Myocardial Protection -->
+                <div onclick="setQueryAndExecute('Compare antegrade and retrograde cardioplegia delivery techniques, hypothermic vs normothermic solutions, and myocardial protection strategies.')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
+                  <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
+                    <img src="/app/images/myocardial_protection.jpg" alt="Myocardial Protection" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                  </div>
+                  <div class="p-3.5 space-y-1">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[9px] font-mono-code uppercase tracking-wider text-rose-800 font-bold">Cardiac Arrest</span>
+                      <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-neutral-400 group-hover:text-amber-800 transition"></i>
+                    </div>
+                    <h5 class="text-sm font-editorial font-bold text-neutral-900">Myocardial Protection</h5>
+                    <p class="text-[11px] text-neutral-500 leading-snug">Antegrade & retrograde cardioplegia, cold blood microplegia, and preservation.</p>
+                  </div>
+                </div>
+
+                <!-- 4. Anticoagulation (ACT) -->
+                <div onclick="setQueryAndExecute('Detail the heparin dosing protocol, Activated Clotting Time (ACT) targets (>480s), heparin resistance management, and protamine reversal.')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
+                  <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
+                    <img src="/app/images/anticoagulation_act.jpg" alt="Anticoagulation ACT" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                  </div>
+                  <div class="p-3.5 space-y-1">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[9px] font-mono-code uppercase tracking-wider text-emerald-800 font-bold">Hemostasis</span>
+                      <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-neutral-400 group-hover:text-amber-800 transition"></i>
+                    </div>
+                    <h5 class="text-sm font-editorial font-bold text-neutral-900">Anticoagulation & ACT</h5>
+                    <p class="text-[11px] text-neutral-500 leading-snug">Heparin management, target ACT > 480 seconds, and protamine reversal.</p>
+                  </div>
+                </div>
+
+                <!-- 5. ECMO -->
+                <div onclick="setQueryAndExecute('Compare VA and VV ECMO indications, cannula selection, circuit management, and physiological differences.')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
+                  <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
+                    <img src="/app/images/ecmo.jpg" alt="ECMO" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                  </div>
+                  <div class="p-3.5 space-y-1">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[9px] font-mono-code uppercase tracking-wider text-clinicalnavy font-bold">Circulatory Support</span>
+                      <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-neutral-400 group-hover:text-amber-800 transition"></i>
+                    </div>
+                    <h5 class="text-sm font-editorial font-bold text-neutral-900">VA & VV ECMO</h5>
+                    <p class="text-[11px] text-neutral-500 leading-snug">Extracorporeal life support configurations, cannulation, and monitoring.</p>
+                  </div>
+                </div>
+
+                <!-- 6. Hemodynamics -->
+                <div onclick="setQueryAndExecute('How are target pump flow, Cardiac Index, and Oxygen Delivery (DO2) calculated and maintained during CPB?')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
+                  <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
+                    <img src="/app/images/hemodynamics.jpg" alt="Hemodynamics" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                  </div>
+                  <div class="p-3.5 space-y-1">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[9px] font-mono-code uppercase tracking-wider text-amber-800 font-bold">Perfusion Flow</span>
+                      <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-neutral-400 group-hover:text-amber-800 transition"></i>
+                    </div>
+                    <h5 class="text-sm font-editorial font-bold text-neutral-900">Hemodynamics & DO₂</h5>
+                    <p class="text-[11px] text-neutral-500 leading-snug">Perfusion pressure, flow rates, SVR/PVR, and oxygen delivery balance.</p>
+                  </div>
+                </div>
+
+                <!-- 7. Heat Exchange -->
+                <div onclick="setQueryAndExecute('What are the principles of temperature management, hypothermia, rewarming limits, and water-blood temperature gradients on CPB?')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
+                  <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
+                    <img src="/app/images/heat_exchange.jpg" alt="Heat Exchange" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                  </div>
+                  <div class="p-3.5 space-y-1">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[9px] font-mono-code uppercase tracking-wider text-neutral-700 font-bold">Thermoregulation</span>
+                      <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-neutral-400 group-hover:text-amber-800 transition"></i>
+                    </div>
+                    <h5 class="text-sm font-editorial font-bold text-neutral-900">Heat Exchange</h5>
+                    <p class="text-[11px] text-neutral-500 leading-snug">Target hypothermia, metabolic suppression, and rewarming safety gradients.</p>
+                  </div>
+                </div>
+
+                <!-- 8. Troubleshooting -->
+                <div onclick="setQueryAndExecute('What are the emergency protocols for massive air embolism, oxygenator failure, and sudden high arterial line pressure during CPB?')" class="group cursor-pointer bg-white border border-subtleborder rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-amber-400/80 transition-all">
+                  <div class="overflow-hidden bg-[#FAF8F5] border-b border-subtleborder/80">
+                    <img src="/app/images/troubleshooting.jpg" alt="Troubleshooting" class="w-full h-36 object-contain group-hover:scale-102 transition duration-200" />
+                  </div>
+                  <div class="p-3.5 space-y-1">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[9px] font-mono-code uppercase tracking-wider text-rose-800 font-bold">Emergency Protocol</span>
+                      <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-neutral-400 group-hover:text-amber-800 transition"></i>
+                    </div>
+                    <h5 class="text-sm font-editorial font-bold text-neutral-900">Troubleshooting</h5>
+                    <p class="text-[11px] text-neutral-500 leading-snug">Emergency de-airing, oxygenator membrane replacement, and high line pressure.</p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+
+
+          </div>
+
+          <!-- CLINICAL GOVERNANCE & DISCLAIMER CARD -->
+          <div class="bg-neutral-50 border border-subtleborder rounded-2xl p-5 space-y-2 text-xs">
+            <div class="flex items-center space-x-2 text-neutral-700 font-semibold">
+              <i data-lucide="info" class="w-4 h-4 text-amber-700"></i>
+              <span class="font-mono-code uppercase text-[11px] tracking-wider">Clinical Governance & Decision Support Notice</span>
+            </div>
+            <p class="text-neutral-600 text-xs leading-relaxed">
+              Perfusion AI is designed as a clinical reference and educational support system. It operates with strict document enclosure to prevent medical hallucination. In the operating room and intensive care unit, all clinical interventions, pharmaceutical administrations, and circuit configurations must adhere to institutional standard operating procedures (SOPs), surgical consensus, and medical device manufacturer guidelines.
+            </p>
+          </div>
+
+        </section>
+
+      <!-- VIEW: CASES & LEARNING (INTERACTIVE MCQ PRACTICE) -->
+      <section id="view-cases" class="hidden flex-1 px-8 py-8 max-w-5xl w-full mx-auto space-y-6">
+        <div class="border-b border-subtleborder pb-4">
+          <h2 class="text-3xl font-editorial font-bold text-neutral-900">Perfusion Exam Practice & MCQs</h2>
+          <p class="text-sm text-neutral-600 mt-1">Generate multiple-choice practice questions grounded in your 799-page textbook & question bank.</p>
+        </div>
+
+        <!-- MCQ Generator Controls -->
+        <div class="bg-white border border-subtleborder rounded-xl p-5 grid grid-cols-1 md:grid-cols-4 gap-4 items-end shadow-sm">
+          <div class="md:col-span-2 space-y-1.5">
+            <label class="text-xs font-mono-code uppercase text-neutral-500 font-semibold">Topic</label>
+            <input id="mcq-topic" type="text" value="Oxygenator gas transfer and sweep gas regulation" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-darktext focus:outline-none focus:border-neutral-400" />
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-xs font-mono-code uppercase text-neutral-500 font-semibold">Questions Count</label>
+            <select id="mcq-count" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-darktext focus:outline-none">
+              <option value="2">2 Questions</option>
+              <option value="3" selected>3 Questions</option>
+              <option value="5">5 Questions</option>
+            </select>
+          </div>
+          <div>
+            <button onclick="generateMCQs()" class="w-full bg-darktext text-white text-xs font-semibold py-2.5 rounded-lg hover:bg-neutral-800 transition">
+              Generate Questions
+            </button>
+          </div>
+        </div>
+
+        <div id="mcq-container" class="space-y-4"></div>
+      </section>
+
+      <!-- VIEW: KNOWLEDGE LIBRARY (DOCUMENTS OVERVIEW & UPLOADER) -->
+      <section id="view-library" class="hidden flex-1 px-8 py-8 max-w-5xl w-full mx-auto space-y-6">
+        <div class="border-b border-subtleborder pb-4 flex items-center justify-between">
+          <div>
+            <h2 class="text-3xl font-editorial font-bold text-neutral-900">Clinical Reference Library</h2>
+            <p class="text-sm text-neutral-600 mt-1">Authentic cardiopulmonary textbooks, clinical monographs, and curriculum guidelines.</p>
+          </div>
+          <button onclick="refreshLibrary()" class="bg-white border border-subtleborder hover:bg-neutral-50 text-xs font-medium px-3 py-1.5 rounded-lg transition inline-flex items-center space-x-1.5 shadow-xs cursor-pointer">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-neutral-600"></i>
+            <span>Refresh Library</span>
+          </button>
+        </div>
+
+        <!-- Documents Table -->
+        <div class="bg-white border border-subtleborder rounded-xl overflow-hidden shadow-sm">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-neutral-50 border-b border-subtleborder font-mono-code uppercase text-neutral-500">
+              <tr>
+                <th class="py-3 px-4">Filename</th>
+                <th class="py-3 px-4">Total Pages</th>
+                <th class="py-3 px-4">Status</th>
+                <th class="py-3 px-4 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="documents-table-body" class="divide-y divide-subtleborder">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- VIEW: CLINICAL CALCULATORS -->
+      <section id="view-calculators" class="hidden flex-1 px-8 py-8 max-w-5xl w-full mx-auto space-y-6">
+        <div class="border-b border-subtleborder pb-4">
+          <h2 class="text-3xl font-editorial font-bold text-neutral-900">Perfusion Clinical Calculators</h2>
+          <p class="text-sm text-neutral-600 mt-1">Point-of-care hemodynamics, body surface area, and cardiopulmonary bypass target flow rates.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          <!-- Calc 1: Body Surface Area (BSA) -->
+          <div class="bg-white border border-subtleborder rounded-xl p-6 shadow-sm space-y-5 flex flex-col justify-between">
+            <div class="space-y-4">
+              <div class="space-y-2 border-b border-subtleborder pb-3">
+                <div class="flex items-center space-x-2">
+                  <i data-lucide="scale" class="w-5 h-5 text-amber-700"></i>
+                  <h3 class="text-base font-bold text-neutral-900 font-editorial">Body Surface Area (BSA)</h3>
+                </div>
+                <p class="text-xs text-neutral-500 font-mono-code">Mosteller Formula: √((Height × Weight) / 3600)</p>
+              </div>
+              
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Height (cm)</label>
+                  <input id="calc-height" type="number" value="175" oninput="calculateBSA()" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1" />
+                </div>
+                <div>
+                  <label class="text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Weight (kg)</label>
+                  <input id="calc-weight" type="number" value="75" oninput="calculateBSA()" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1" />
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-cream border border-subtleborder p-4 rounded-xl space-y-2 font-mono-code text-xs">
+              <div class="flex justify-between items-center text-neutral-600">
+                <span>Calculated Body Surface Area:</span> 
+                <span id="calc-bsa-result" class="font-bold text-darktext text-base">1.91 m²</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Calc 2: Flow Rate Calculator -->
+          <div class="bg-white border border-subtleborder rounded-xl p-6 shadow-sm space-y-5 flex flex-col justify-between">
+            <div class="space-y-4">
+              <div class="space-y-2 border-b border-subtleborder pb-3">
+                <div class="flex items-center space-x-2">
+                  <i data-lucide="activity" class="w-5 h-5 text-emerald-700"></i>
+                  <h3 class="text-base font-bold text-neutral-900 font-editorial">Flow Rate Calculator</h3>
+                </div>
+                <p class="text-xs text-neutral-500 font-mono-code">Flow Rate = BSA × Cardiac Index</p>
+              </div>
+              
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Patient BSA (m²)</label>
+                  <input id="calc-flow-bsa" type="number" step="0.01" value="1.91" oninput="calculateFlowRate()" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1" />
+                </div>
+                <div>
+                  <label class="text-[11px] text-neutral-500 font-mono-code uppercase font-semibold">Cardiac Index (CI)</label>
+                  <input id="calc-flow-ci" type="number" step="0.1" value="2.4" oninput="calculateFlowRate()" class="w-full border border-subtleborder rounded-lg px-3 py-2 text-xs text-neutral-800 focus:outline-none focus:border-neutral-400 mt-1" />
+                  <span class="text-[9px] text-neutral-400 font-mono-code">L/min/m²</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-cream border border-subtleborder p-4 rounded-xl space-y-2 font-mono-code text-xs">
+              <div class="flex justify-between items-center text-neutral-600">
+                <span>Target Flow Rate:</span> 
+                <span id="calc-flow-rate-result" class="font-bold text-emerald-800 text-base">4.58 L/min</span>
+              </div>
+              <div class="flex justify-between items-center text-neutral-600 border-t border-subtleborder/60 pt-2">
+                <span>Volume Equivalent:</span> 
+                <span id="calc-flow-rate-ml" class="font-semibold text-neutral-700 text-xs">4,584 mL/min</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FOOTER -->
+      <footer class="mt-auto border-t border-subtleborder px-8 py-4 bg-warmbg/85 backdrop-blur-md text-neutral-400 text-xs flex flex-wrap items-center justify-between gap-4">
+        <p>Perfusion AI • Educational and Clinical Decision Support System</p>
+        <p class="text-neutral-500 font-mono-code text-[11px]">Accredited Clinical Decision Platform • v1.0</p>
+      </footer>
+
+      </div> <!-- /#content-scroll-area -->
+
+    </main>
+
+  </div>
+
+  <!-- SLIDE-OVER CITATION INSPECTOR DRAWER -->
+  <div id="citation-drawer" class="fixed inset-y-0 right-0 w-full max-w-md bg-white border-l border-subtleborder shadow-2xl p-6 transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col justify-between">
+    <div class="space-y-4">
+      <div class="flex items-center justify-between border-b border-subtleborder pb-3">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="file-check" class="w-4 h-4 text-emerald-600"></i>
+          <h3 class="text-sm font-bold text-darktext uppercase font-mono-code tracking-wide">Citation Inspector</h3>
+        </div>
+        <button onclick="closeCitationDrawer()" class="text-neutral-400 hover:text-darktext p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-2">
+        <p class="text-[10px] font-mono-code text-neutral-400 uppercase tracking-widest font-semibold">Source Document</p>
+        <p id="drawer-source" class="text-xs font-semibold text-neutral-900 bg-neutral-50 p-2.5 rounded-lg border border-subtleborder break-all"></p>
+      </div>
+
+      <div class="space-y-1">
+        <p class="text-[10px] font-mono-code text-neutral-400 uppercase tracking-widest font-semibold">Authentic PDF Page</p>
+        <p id="drawer-page" class="text-sm font-bold text-amber-800"></p>
+      </div>
+
+      <div class="space-y-2">
+        <p class="text-[10px] font-mono-code text-neutral-400 uppercase tracking-widest font-semibold">Verbatim Textbook Excerpt</p>
+        <div id="drawer-excerpt" class="text-xs text-neutral-700 bg-warmbg p-3.5 rounded-xl border border-subtleborder leading-relaxed italic max-h-60 overflow-y-auto"></div>
+      </div>
+    </div>
+
+    <div class="border-t border-subtleborder pt-4">
+      <button onclick="closeCitationDrawer()" class="w-full bg-darktext text-white text-xs font-semibold py-2 rounded-lg hover:bg-neutral-800 transition">
+        Close Inspector
+      </button>
+    </div>
+  </div>
+
+  <!-- BACKDROP FOR CONVERSATIONS DRAWER -->
+  <div id="conversations-backdrop" onclick="closeConversationsDrawer()" class="fixed inset-0 bg-black/25 backdrop-blur-[2px] z-40 hidden transition-opacity"></div>
+
+  <!-- SLIDE-OVER PAST CONVERSATIONS DRAWER -->
+  <div id="conversations-drawer" class="fixed inset-y-0 right-0 w-full max-w-md bg-white border-l border-subtleborder shadow-2xl p-6 transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col justify-between">
+    <div class="space-y-4 flex-1 flex flex-col min-h-0">
+      <!-- Drawer Header -->
+      <div class="flex items-center justify-between border-b border-subtleborder pb-3 flex-shrink-0">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="history" class="w-4 h-4 text-amber-700"></i>
+          <h3 class="text-sm font-bold text-darktext uppercase font-mono-code tracking-wide">Past Conversations</h3>
+        </div>
+        <button onclick="closeConversationsDrawer()" class="text-neutral-400 hover:text-darktext p-1 cursor-pointer">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Past Chats List -->
+      <div id="drawer-tab-chats-content" class="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
+        <div id="conversations-list-container" class="space-y-2">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Drawer Footer -->
+    <div class="border-t border-subtleborder pt-4 flex-shrink-0 flex items-center space-x-2">
+      <button onclick="startFreshChatFromDrawer()" class="flex-1 bg-darktext text-white text-xs font-semibold py-2 rounded-lg hover:bg-neutral-800 transition flex items-center justify-center space-x-1.5">
+        <i data-lucide="plus" class="w-3.5 h-3.5 text-amber-300"></i>
+        <span>Start New Chat</span>
+      </button>
+      <button onclick="closeConversationsDrawer()" class="bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-medium py-2 px-3 rounded-lg transition">
+        Close
+      </button>
+    </div>
+  </div>
+
+  <!-- SUPABASE & AUTHENTICATION CONFIGURATION MODAL -->
+  <div id="google-auth-modal" class="fixed inset-0 z-[75] hidden items-center justify-center p-4 bg-black/40 backdrop-blur-[3px] transition-all duration-200">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-subtleborder space-y-5 transform transition-all duration-200 relative">
+      <!-- Close Button -->
+      <button onclick="closeGoogleAuthModal()" class="absolute top-4 right-4 text-neutral-400 hover:text-darktext p-1 transition cursor-pointer">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Modal Header -->
+      <div class="flex items-center space-x-3 border-b border-subtleborder pb-4">
+        <div class="w-10 h-10 rounded-xl bg-darktext text-amber-300 flex items-center justify-center shadow-xs">
+          <i data-lucide="shield-check" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h3 class="text-base font-editorial font-bold text-neutral-900 leading-tight">Institutional Authentication</h3>
+          <p class="text-xs text-neutral-500 mt-0.5">Powered by Supabase Auth</p>
+        </div>
+      </div>
+
+      <!-- Supabase Status Badge & Description -->
+      <div class="bg-[#FAF8F5] border border-subtleborder rounded-xl p-4 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-neutral-800">Auth Provider</span>
+          <span id="oauth-status-badge" class="font-mono-code text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800">Supabase Auth</span>
+        </div>
+        <p id="oauth-status-desc" class="text-xs text-neutral-600 leading-relaxed">
+          Sign in or register using your institutional credentials. User accounts and sessions are authenticated via Supabase.
+        </p>
+      </div>
+
+      <!-- Configuration Section -->
+      <div id="google-client-setup-section" class="border border-subtleborder rounded-xl p-3.5 bg-neutral-50/70 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-neutral-800 flex items-center space-x-1.5">
+            <i data-lucide="key" class="w-3.5 h-3.5 text-amber-700"></i>
+            <span>Supabase Configuration</span>
+          </span>
+          <button onclick="toggleSetupGuide()" class="text-[10px] text-amber-800 hover:underline font-mono-code cursor-pointer">
+            How to get?
+          </button>
+        </div>
+
+        <!-- Step-by-step Quick Guide -->
+        <div id="google-setup-guide" class="hidden text-[11px] text-neutral-600 bg-white p-3 rounded-lg border border-subtleborder space-y-1.5 leading-snug">
+          <p class="font-bold text-neutral-800">Supabase Setup:</p>
+          <ol class="list-decimal list-inside space-y-1 text-neutral-600">
+            <li>Go to your <a href="https://supabase.com/dashboard" target="_blank" class="text-amber-800 underline font-semibold">Supabase Dashboard</a>.</li>
+            <li>Select your project & go to <strong>Project Settings → API</strong>.</li>
+            <li>Copy the <strong>Project URL</strong> and <strong>anon / public API Key</strong>.</li>
+            <li>Paste them below or add to <code class="bg-neutral-100 px-1 py-0.5 rounded text-[10px]">.env</code>.</li>
+          </ol>
+        </div>
+
+        <div class="space-y-2">
+          <div>
+            <label class="text-[10px] font-mono-code uppercase text-neutral-500 font-semibold">Supabase Project URL</label>
+            <input 
+              id="input-supabase-url" 
+              type="text" 
+              placeholder="e.g. https://your-project.supabase.co" 
+              class="w-full border border-subtleborder rounded-lg px-2.5 py-1.5 text-xs text-darktext bg-white focus:outline-none focus:border-neutral-400 font-mono-code"
+            />
+          </div>
+          <div>
+            <label class="text-[10px] font-mono-code uppercase text-neutral-500 font-semibold">Supabase Anon Key</label>
+            <input 
+              id="input-supabase-key" 
+              type="password" 
+              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." 
+              class="w-full border border-subtleborder rounded-lg px-2.5 py-1.5 text-xs text-darktext bg-white focus:outline-none focus:border-neutral-400 font-mono-code"
+            />
+          </div>
+          <button 
+            id="btn-save-google-creds"
+            onclick="saveSupabaseCredentials()"
+            class="w-full bg-[#18181B] hover:bg-stone-800 text-white rounded-lg py-2 px-3 text-xs font-semibold shadow-xs transition active:scale-95 cursor-pointer flex items-center justify-center space-x-1.5"
+          >
+            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            <span>Save & Activate Supabase</span>
+          </button>
+        </div>
+      </div>
+
+      <p class="text-[10px] text-center text-neutral-400 font-mono-code">
+        Cardiovascular Decision Support • Verified Clinical Authentication
+      </p>
+    </div>
+  </div>
+
+  <script src="/app/app.js?v=20261018_v5"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Secrets and Local Environment
+.env
+*.pem
+*.key
+
+# Data & Indices (Store documents and FAISS indices locally only)
+data/documents/*
+!data/documents/.gitkeep
+data/indices/*
+!data/indices/.gitkeep
+data/metadata.json
+pdfs/*
+!pdfs/.gitkeep
+
+# Pytest / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+.neon
+node_modules/
+.agents/
+
