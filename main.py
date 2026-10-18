@@ -154,6 +154,32 @@ if frontend_dir.exists():
     app.mount("/app", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
 
 
+# PWA Manifest & Service Worker Endpoints (for standalone PWA execution)
+@app.get("/manifest.json", include_in_schema=False)
+def get_manifest():
+    manifest_path = frontend_dir / "manifest.json"
+    if manifest_path.exists():
+        from fastapi.responses import FileResponse
+        return FileResponse(str(manifest_path), media_type="application/manifest+json")
+    raise HTTPException(status_code=404, detail="Manifest not found")
+
+
+@app.get("/sw.js", include_in_schema=False)
+def get_service_worker():
+    sw_path = frontend_dir / "sw.js"
+    if sw_path.exists():
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            str(sw_path),
+            media_type="application/javascript",
+            headers={
+                "Service-Worker-Allowed": "/",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+        )
+    raise HTTPException(status_code=404, detail="Service worker not found")
+
+
 @app.get("/", summary="API Root", tags=["Health"])
 def api_root():
     """Root endpoint for backend API status and documentation link."""

@@ -243,6 +243,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (state.currentConversationId) {
     loadConversationSession(state.currentConversationId, false, false);
   }
+
+  // Initialize PWA Service Worker & Install Prompt Flow
+  registerServiceWorker();
+  initPwaInstallFlow();
 });
 
 let isBackendLoading = false;
@@ -2678,3 +2682,182 @@ function startFreshChatFromDrawer() {
   closeConversationsDrawer();
   clearChat(false);
 }
+
+// ==========================================
+// PROGRESSIVE WEB APP (PWA) CONTROLLER
+// ==========================================
+let deferredInstallPrompt = null;
+
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    window.addEventListener('load', () => {
+      const swPath = window.location.pathname.startsWith('/app') ? '/app/sw.js' : '/sw.js';
+      const swScope = window.location.pathname.startsWith('/app') ? '/app/' : '/';
+      navigator.serviceWorker.register(swPath, { scope: swScope })
+        .then((reg) => {
+          console.log('[PWA] Service Worker registered successfully with scope:', reg.scope);
+          reg.onupdatefound = () => {
+            const installing = reg.installing;
+            if (installing) {
+              installing.onstatechange = () => {
+                if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.log('[PWA] New version ready.');
+                }
+              };
+            }
+          };
+        })
+        .catch((err) => {
+          console.debug('[PWA] Service Worker registration note:', err);
+        });
+    });
+  }
+}
+
+function isAppInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches ||
+         window.matchMedia('(display-mode: fullscreen)').matches ||
+         window.matchMedia('(display-mode: minimal-ui)').matches ||
+         window.navigator.standalone === true ||
+         document.referrer.includes('android-app://');
+}
+
+function isIosSafari() {
+  const userAgent = window.navigator.userAgent.toLowerCase();
+  const isIos = /iphone|ipad|ipod/.test(userAgent) && !window.MSStream;
+  const isSafari = userAgent.includes('safari') && !userAgent.includes('chrome') && !userAgent.includes('crios') && !userAgent.includes('android');
+  return isIos && isSafari;
+}
+
+function shouldShowInstallPrompt() {
+  if (isAppInstalled()) return false;
+  const dismissed = localStorage.getItem('perfusion_pwa_dismissed');
+  if (dismissed) {
+    const daysPassed = (Date.now() - parseInt(dismissed, 10)) / (1000 * 60 * 60 * 24);
+    if (daysPassed < 14) return false;
+  }
+  return true;
+}
+
+function showPwaInstallModal(isIosMode = false) {
+  if (isAppInstalled()) return;
+  const modal = document.getElementById('pwa-install-modal');
+  const iosInstructions = document.getElementById('pwa-ios-instructions');
+  const installBtn = document.getElementById('btn-pwa-install-action');
+  if (!modal) return;
+
+  if (isIosMode) {
+    if (iosInstructions) iosInstructions.classList.remove('hidden');
+    if (installBtn) installBtn.classList.add('hidden');
+  } else {
+    if (iosInstructions) iosInstructions.classList.add('hidden');
+    if (installBtn) installBtn.classList.remove('hidden');
+  }
+
+  modal.classList.remove('hidden');
+  void modal.offsetWidth; // Force CSS reflow
+  modal.classList.remove('translate-y-4', 'opacity-0');
+  modal.classList.add('translate-y-0', 'opacity-100');
+  if (window.lucide) lucide.createIcons();
+}
+
+function dismissPwaInstall() {
+  const modal = document.getElementById('pwa-install-modal');
+  localStorage.setItem('perfusion_pwa_dismissed', Date.now().toString());
+  if (modal) {
+    modal.classList.remove('translate-y-0', 'opacity-100');
+    modal.classList.add('translate-y-4', 'opacity-0');
+    setTimeout(() => {
+      modal.classList.add('hidden');
+    }, 300);
+  }
+}
+
+async function triggerPwaInstall() {
+  if (deferredInstallPrompt) {
+    try {
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      if (outcome === 'accepted') {
+        localStorage.setItem('perfusion_pwa_installed', 'true');
+        dismissPwaInstall();
+      }
+      deferredInstallPrompt = null;
+    } catch (err) {
+      console.debug('[PWA] Prompt outcome error:', err);
+    }
+  } else if (isIosSafari()) {
+    showPwaInstallModal(true);
+  } else {
+    showToastNotification('To install, open browser settings/menu and select "Install Perfusion AI" or "Add to Home Screen".', 'info');
+  }
+}
+
+function updateInstallButtonsVisibility() {
+  const headerBtn = document.getElementById('btn-header-install');
+  const dropdownItem = document.getElementById('dropdown-install-item');
+  const installed = isAppInstalled();
+
+  if (installed) {
+    if (headerBtn) headerBtn.classList.add('hidden');
+    if (dropdownItem) dropdownItem.classList.add('hidden');
+    const modal = document.getElementById('pwa-install-modal');
+    if (modal) modal.classList.add('hidden');
+    return;
+  }
+
+  // If install is available or on iOS Safari, surface install buttons
+  if (deferredInstallPrompt || isIosSafari()) {
+    if (headerBtn) {
+      headerBtn.classList.remove('hidden');
+      headerBtn.classList.add('inline-flex');
+    }
+    if (dropdownItem) {
+      dropdownItem.classList.remove('hidden');
+      dropdownItem.classList.add('flex');
+    }
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+function initPwaInstallFlow() {
+  updateInstallButtonsVisibility();
+
+  // Listen for display mode changes (e.g. user opens in standalone mode)
+  window.matchMedia('(display-mode: standalone)').addEventListener('change', () => {
+    updateInstallButtonsVisibility();
+  });
+
+  // Capture beforeinstallprompt on supported browsers (Chrome, Edge, Samsung Internet, Android, Opera)
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    updateInstallButtonsVisibility();
+
+    if (shouldShowInstallPrompt()) {
+      setTimeout(() => {
+        showPwaInstallModal(false);
+      }, 1600);
+    }
+  });
+
+  // Listen for completed installation
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    localStorage.setItem('perfusion_pwa_installed', 'true');
+    dismissPwaInstall();
+    updateInstallButtonsVisibility();
+    showAuthNotification('Perfusion AI installed successfully!');
+  });
+
+  // iOS Safari flow (beforeinstallprompt is not supported)
+  if (isIosSafari() && !isAppInstalled() && shouldShowInstallPrompt()) {
+    setTimeout(() => {
+      showPwaInstallModal(true);
+    }, 2400);
+  }
+}
+
+window.triggerPwaInstall = triggerPwaInstall;
+window.dismissPwaInstall = dismissPwaInstall;
+
