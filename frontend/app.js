@@ -247,6 +247,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize PWA Service Worker & Install Prompt Flow
   registerServiceWorker();
   initPwaInstallFlow();
+
+  // Mobile PWA Viewport, Virtual Keyboard & Touch Optimization
+  setupVisualViewportSync();
+  setupMobileKeyboardHandling();
+  setupMobileSwipeGestures();
 });
 
 let isBackendLoading = false;
@@ -532,7 +537,7 @@ function switchView(viewName) {
 
   if (viewName === 'chat') {
     const chatInput = document.getElementById('chat-input');
-    if (chatInput) setTimeout(() => chatInput.focus(), 150);
+    if (chatInput && window.innerWidth >= 768) setTimeout(() => chatInput.focus(), 150);
     scrollChatToBottom();
   } else if (viewName === 'library') {
     loadDocuments();
@@ -2866,4 +2871,117 @@ function initPwaInstallFlow() {
 
 window.triggerPwaInstall = triggerPwaInstall;
 window.dismissPwaInstall = dismissPwaInstall;
+
+// ==========================================
+// 14. MOBILE PWA & TOUCH ENHANCEMENTS
+// ==========================================
+function setupVisualViewportSync() {
+  if (!window.visualViewport) {
+    const onResize = () => {
+      document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+    };
+    window.addEventListener('resize', onResize);
+    onResize();
+    return;
+  }
+
+  const onViewportChange = () => {
+    const vh = window.visualViewport.height;
+    document.documentElement.style.setProperty('--app-height', `${vh}px`);
+
+    // Detect virtual keyboard on mobile screens (viewport height shrinks notably)
+    const isKeyboardOpen = (window.innerHeight - vh) > 140;
+    if (isKeyboardOpen && window.innerWidth < 768) {
+      document.body.classList.add('keyboard-open');
+      const chatMessages = document.getElementById('chat-messages');
+      if (chatMessages && state.activeView === 'chat') {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    } else if (!isKeyboardOpen && !document.activeElement?.matches('input, textarea')) {
+      document.body.classList.remove('keyboard-open');
+    }
+  };
+
+  window.visualViewport.addEventListener('resize', onViewportChange);
+  window.visualViewport.addEventListener('scroll', onViewportChange);
+  onViewportChange();
+}
+
+function setupMobileKeyboardHandling() {
+  const chatInput = document.getElementById('chat-input');
+  if (!chatInput) return;
+
+  chatInput.addEventListener('focus', () => {
+    if (window.innerWidth < 768) {
+      document.body.classList.add('keyboard-open');
+      setTimeout(() => {
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+      }, 120);
+    }
+  });
+
+  chatInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (!document.activeElement?.matches('#chat-input, input, textarea')) {
+        document.body.classList.remove('keyboard-open');
+      }
+    }, 150);
+  });
+}
+
+function setupMobileSwipeGestures() {
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchEndX = 0;
+  let touchEndY = 0;
+
+  document.addEventListener('touchstart', (e) => {
+    if (!e.changedTouches || e.changedTouches.length === 0) return;
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (!e.changedTouches || e.changedTouches.length === 0) return;
+    touchEndX = e.changedTouches[0].screenX;
+    touchEndY = e.changedTouches[0].screenY;
+    handleSwipe();
+  }, { passive: true });
+
+  function handleSwipe() {
+    const dx = touchEndX - touchStartX;
+    const dy = touchEndY - touchStartY;
+
+    // Only respond to predominantly horizontal swipes (avoid interfering with vertical scroll)
+    if (Math.abs(dx) < 65 || Math.abs(dy) > Math.abs(dx) * 0.75) return;
+
+    const sidebar = document.getElementById('app-sidebar');
+    const isSidebarOpen = sidebar && !sidebar.classList.contains('-translate-x-full');
+    const convDrawer = document.getElementById('conversations-drawer');
+    const isConvOpen = convDrawer && !convDrawer.classList.contains('translate-x-full');
+    const citDrawer = document.getElementById('citation-drawer');
+    const isCitOpen = citDrawer && !citDrawer.classList.contains('translate-x-full');
+
+    // Swipe Left (dx < -65)
+    if (dx < 0) {
+      if (isSidebarOpen) {
+        closeMobileSidebar();
+      } else if (touchStartX > (window.innerWidth - 50) && state.activeView === 'chat' && !isConvOpen && !isCitOpen) {
+        toggleConversationsDrawer();
+      }
+    }
+    // Swipe Right (dx > 65)
+    else {
+      if (isConvOpen) {
+        closeConversationsDrawer();
+      } else if (isCitOpen) {
+        closeCitationDrawer();
+      } else if (touchStartX < 40 && !isSidebarOpen) {
+        toggleMobileSidebar();
+      }
+    }
+  }
+}
+
 

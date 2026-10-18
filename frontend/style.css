@@ -11,17 +11,21 @@
   --border-subtle: #EAE5DC;
   --text-dark: #1A1A1A;
   --text-muted: #6B7280;
+  --app-height: 100dvh;
 }
 
 html, body {
   height: 100%;
-  height: 100dvh;
+  height: var(--app-height, 100dvh);
+  max-height: var(--app-height, 100dvh);
   min-height: -webkit-fill-available;
   margin: 0;
   padding: 0;
   overflow: hidden !important;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -144,13 +148,21 @@ body {
   }
 }
 
-/* Safe-area insets for notched iPhones & Android gesture bars */
+/* Safe-area insets for notched iPhones & Android gesture navigation */
 .safe-bottom {
-  padding-bottom: max(0.375rem, env(safe-area-inset-bottom, 0px));
+  padding-bottom: max(0.625rem, env(safe-area-inset-bottom, 0px));
 }
 
 .safe-top {
-  padding-top: max(0.375rem, env(safe-area-inset-top, 0px));
+  padding-top: max(0.625rem, env(safe-area-inset-top, 0px));
+}
+
+.safe-left {
+  padding-left: max(0.5rem, env(safe-area-inset-left, 0px));
+}
+
+.safe-right {
+  padding-right: max(0.5rem, env(safe-area-inset-right, 0px));
 }
 
 /* Smooth kinetic momentum scrolling on mobile devices */
@@ -160,13 +172,53 @@ body {
 #content-scroll-area,
 #conversations-list-container {
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* Mobile Virtual Keyboard Active State */
+body.keyboard-open #mobile-bottom-nav {
+  transform: translateY(125%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.keyboard-open #view-chat {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Mobile Bottom Navigation Bar Transitions */
+#mobile-bottom-nav {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
 }
 
 /* Better tap responsiveness on touch devices */
 @media (hover: none) and (pointer: coarse) {
   button, [role="button"], a {
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
+
+  /* Ergonomic touch targets for mobile thumb navigation */
+  #mobile-bottom-nav button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  #btn-mobile-menu,
+  #btn-voice-input,
+  #btn-chat-send {
+    min-height: 40px;
+    min-width: 40px;
+  }
+}
+
+/* Hardware accelerated slide-over drawers for 60fps mobile gestures */
+#citation-drawer,
+#conversations-drawer,
+#app-sidebar {
+  will-change: transform;
+  overscroll-behavior-y: contain;
 }
 
 /* Backend loading banner slide-down animation */

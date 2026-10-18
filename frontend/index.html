@@ -4,11 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
   <meta name="theme-color" content="#FAF8F4">
+  <meta name="theme-color" content="#FAF8F4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#FAF8F4" media="(prefers-color-scheme: dark)">
   <meta name="application-name" content="Perfusion AI">
   <meta name="apple-mobile-web-app-title" content="Perfusion AI">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-touch-fullscreen" content="yes">
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+  <meta name="HandheldFriendly" content="true">
+  <meta name="MobileOptimized" content="width">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
@@ -23,7 +29,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <link rel="stylesheet" href="style.css?v=20261018_v9">
+  <link rel="stylesheet" href="style.css?v=20261018_v10">
   <style>
     /* Medical Illustration Wallpaper */
     body {
@@ -95,7 +101,7 @@
   <div id="view-login" class="fixed inset-0 z-50 flex flex-col justify-between overflow-y-auto min-h-screen bg-warmbg text-darktext select-none" style="background-color: #FAF8F4; background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
     
     <!-- Top Header -->
-    <header class="w-full px-4 sm:px-10 py-3.5 sm:py-5 flex items-center justify-between z-10 flex-shrink-0">
+    <header class="w-full px-4 sm:px-10 py-3.5 sm:py-5 flex items-center justify-between z-10 flex-shrink-0 safe-top">
       <!-- Left Logo & Monospace Tracking Subtitle -->
       <div class="flex items-center space-x-3 cursor-pointer" onclick="bypassLoginToGuest()">
         <div class="w-8 h-8 rounded-lg bg-[#18181B] text-amber-300 flex items-center justify-center shadow-xs">
@@ -412,7 +418,7 @@
     <main class="flex-1 flex flex-col h-full overflow-hidden min-h-0 relative perfusion-canvas-bg" style="background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat;">
 
       <!-- TOP SEARCH & VERIFICATION BAR (PINNED AT TOP) -->
-      <div class="w-full border-b border-subtleborder bg-warmbg/85 backdrop-blur-md px-3 sm:px-8 py-2.5 sm:py-3.5 flex items-center justify-between flex-shrink-0 z-10">
+      <div class="w-full border-b border-subtleborder bg-warmbg/85 backdrop-blur-md px-3 sm:px-8 py-2.5 sm:py-3.5 flex items-center justify-between flex-shrink-0 z-10 safe-top">
         <!-- Mobile Hamburger & View Header -->
         <div class="flex items-center space-x-2 md:hidden">
           <button id="btn-mobile-menu" onclick="toggleMobileSidebar()" class="p-1.5 text-neutral-700 hover:text-darktext hover:bg-neutral-200/50 rounded-lg transition active:scale-95 cursor-pointer" aria-label="Open Navigation Menu">
@@ -620,7 +626,7 @@
       </section>
 
       <!-- SCROLLABLE WORKSPACE CONTENT (HOME, CASES, LIBRARY, CALCULATORS) -->
-      <div id="content-scroll-area" class="flex-1 overflow-y-auto min-h-0 flex flex-col pb-20 md:pb-0">
+      <div id="content-scroll-area" class="flex-1 overflow-y-auto min-h-0 flex flex-col pb-24 md:pb-0">
 
         <!-- VIEW: HOME WORKSPACE (ABOUT THE PLATFORM) -->
         <section id="view-home" class="flex-1 px-4 sm:px-10 py-6 sm:py-10 max-w-6xl w-full mx-auto space-y-8 sm:space-y-12">
@@ -1392,7 +1398,7 @@
   </div>
 
   <!-- PROGRESSIVE WEB APP (PWA) INSTALL PROMPT MODAL -->
-  <div id="pwa-install-modal" class="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[85] hidden max-w-sm sm:max-w-md w-[calc(100%-2rem)] sm:w-auto bg-white/98 backdrop-blur-md rounded-2xl border border-stone-200 shadow-2xl p-4 sm:p-5 text-left select-none transition-all duration-300 transform translate-y-4 opacity-0">
+  <div id="pwa-install-modal" class="fixed bottom-[4.75rem] sm:bottom-6 right-3.5 sm:right-6 left-3.5 sm:left-auto z-[85] hidden max-w-sm sm:max-w-md w-auto bg-white/98 backdrop-blur-md rounded-2xl border border-stone-200 shadow-2xl p-4 sm:p-5 text-left select-none transition-all duration-300 transform translate-y-4 opacity-0">
     <div class="flex items-start justify-between space-x-3 mb-2.5">
       <div class="flex items-center space-x-3">
         <div class="w-11 h-11 rounded-xl bg-[#18181B] text-amber-300 flex items-center justify-center flex-shrink-0 shadow-xs border border-amber-500/20">
@@ -1450,6 +1456,6 @@
   </div>
 
   <script src="config.js?v=20261018_v4"></script>
-  <script src="app.js?v=20261018_v13"></script>
+  <script src="app.js?v=20261018_v14"></script>
 </body>
 </html>
