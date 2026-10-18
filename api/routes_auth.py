@@ -35,6 +35,22 @@ SESSION_SECRET = settings.GROQ_API_KEY[:32] if settings.GROQ_API_KEY else "perfu
 # In-memory session store (token -> UserProfile)
 ACTIVE_SESSIONS = {}
 
+# Rate limiting store for login attempts: ip -> list of timestamps
+LOGIN_ATTEMPTS = {}
+
+
+def check_login_rate_limit(client_ip: str):
+    """Prevent brute-force password guessing attacks (max 20 attempts per 5 minutes per IP)."""
+    now = time.time()
+    attempts = [t for t in LOGIN_ATTEMPTS.get(client_ip, []) if (now - t) < 300]
+    if len(attempts) >= 20:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many authentication attempts. Please wait 5 minutes before trying again."
+        )
+    attempts.append(now)
+    LOGIN_ATTEMPTS[client_ip] = attempts
+
 
 def is_supabase_configured() -> bool:
     """Check if Supabase URL and Anon Key are set in settings."""
@@ -86,13 +102,27 @@ def generate_session_token(sub: str, email: str) -> str:
     return f"{payload}:{signature}"
 
 
+# Maximum duration for signed local session tokens (7 days)
+SESSION_MAX_AGE_SECONDS = 7 * 24 * 3600
+
+
 def verify_session_token(token: str) -> bool:
-    """Verify validity of a session token."""
+    """Verify validity and expiration of a session token."""
     try:
         parts = token.split(":")
         if len(parts) != 4:
             return False
         sub, email, timestamp, signature = parts
+
+        # Verify token expiration TTL
+        try:
+            ts = int(timestamp)
+            now = int(time.time())
+            if (now - ts) > SESSION_MAX_AGE_SECONDS or ts > (now + 300):
+                return False
+        except (ValueError, TypeError):
+            return False
+
         payload = f"{sub}:{email}:{timestamp}"
         expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
         return hmac.compare_digest(signature, expected)
@@ -598,12 +628,15 @@ async def recover_password(payload: PasswordRecoveryRequest):
 
 
 @router.post("/login", response_model=UserProfile)
-async def login_with_email(payload: EmailLoginRequest):
+async def login_with_email(payload: EmailLoginRequest, request: Request):
     """
     Institutional Email and Password login.
     Uses Supabase Auth when configured, or local verified database accounts.
     NO DEMO ACCOUNTS.
     """
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    check_login_rate_limit(client_ip)
+
     email = payload.email.strip().lower()
     password = payload.password.strip()
 
