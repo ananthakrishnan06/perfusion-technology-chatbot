@@ -391,3 +391,8 @@ class ChatService:
             except Exception as e:
                 logger.error(f"Failed to persist stream turn: {e}")
 
+    def transcribe_audio(self, file_bytes: bytes, filename: str = "audio.webm") -> str:
+        """Transcribe client microphone audio using Groq Whisper model."""
+        return self.answer_generator.groq_client.transcribe_audio(file_bytes=file_bytes, filename=filename)
+
+

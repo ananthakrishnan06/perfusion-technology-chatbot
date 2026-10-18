@@ -508,6 +508,16 @@
                 onkeydown="handleChatKeyDown(event)"
               ></textarea>
               <button 
+                id="btn-voice-input"
+                onclick="toggleVoiceInput()"
+                type="button"
+                class="bg-white hover:bg-[#F5EFE6] text-neutral-700 hover:text-neutral-900 border border-subtleborder rounded-xl p-2.5 flex-shrink-0 transition active:scale-95 shadow-xs cursor-pointer relative"
+                title="Voice input (Click to speak)"
+                aria-label="Voice input"
+              >
+                <i id="mic-icon" data-lucide="mic" class="w-4 h-4"></i>
+              </button>
+              <button 
                 id="btn-chat-send"
                 onclick="sendChatMessage()"
                 class="bg-darktext hover:bg-neutral-800 text-white rounded-xl p-2.5 flex-shrink-0 transition active:scale-95 shadow-xs cursor-pointer"
@@ -517,7 +527,13 @@
               </button>
             </div>
             <div class="flex items-center justify-between text-[10px] font-mono-code text-neutral-400 pt-1.5 sm:pt-2 px-1 border-t border-subtleborder/40 mt-1">
-              <span>Verified Clinical Decision Support</span>
+              <div class="flex items-center space-x-2">
+                <span id="voice-status-indicator" class="hidden items-center space-x-1.5 text-red-600 font-semibold animate-pulse">
+                  <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                  <span id="voice-status-text">Listening... Speak now</span>
+                </span>
+                <span id="default-input-hint">Verified Clinical Decision Support</span>
+              </div>
               <span class="hidden sm:inline">Shift+Enter for newline</span>
             </div>
           </div>

@@ -1,11 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from schemas.chat import ChatRequest, ChatResponse
 from services.chat_service import ChatService
 from generation.groq_client import GroqConfigurationError, GroqAPIError
 from api.dependencies import get_chat_service
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
+
+
+class TranscribeResponse(BaseModel):
+    text: str
 
 
 @router.post(
@@ -74,4 +79,45 @@ def stream_question(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while streaming your answer: {str(e)}"
         )
+
+
+@router.post(
+    "/transcribe",
+    response_model=TranscribeResponse,
+    summary="Transcribe spoken audio recording to text via Groq Whisper"
+)
+async def transcribe_audio_endpoint(
+    file: UploadFile = File(...),
+    chat_service: ChatService = Depends(get_chat_service)
+):
+    """
+    Transcribe microphone audio using Groq's official whisper-large-v3-turbo model.
+    Includes clinical Perfusion Technology terminology priming for high accuracy.
+    """
+    try:
+        file_bytes = await file.read()
+        if not file_bytes:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty audio recording uploaded.")
+
+        filename = file.filename or "audio.webm"
+        text = chat_service.transcribe_audio(file_bytes=file_bytes, filename=filename)
+        return TranscribeResponse(text=text)
+    except HTTPException:
+        raise
+    except GroqConfigurationError as ge:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Groq API service is not configured: {str(ge)}"
+        )
+    except GroqAPIError as ae:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Audio transcription failed: {str(ae)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while transcribing audio: {str(e)}"
+        )
+
 

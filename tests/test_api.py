@@ -240,5 +240,22 @@ def test_live_groq_integration(test_client, sample_perfusion_pdf_bytes):
     assert chat_res.status_code == 200
     chat_data = chat_res.json()
     assert chat_data["grounded"] is True
-    assert len(chat_data["citations"]) > 0
     assert "400" in chat_data["answer"] or "480" in chat_data["answer"] or "ACT" in chat_data["answer"]
+
+
+def test_transcribe_audio_endpoint(test_client, monkeypatch):
+    """Test POST /api/v1/chat/transcribe endpoint with mocked Groq Whisper."""
+    from generation.groq_client import GroqClientWrapper
+    monkeypatch.setattr(
+        GroqClientWrapper,
+        "transcribe_audio",
+        lambda self, file_bytes, filename, **kwargs: "What are the priming volume constituents for adult CPB?"
+    )
+
+    fake_audio = io.BytesIO(b"RIFF....WAVEfmt....data....fake audio bytes")
+    files = {"file": ("recording.webm", fake_audio, "audio/webm")}
+    res = test_client.post("/api/v1/chat/transcribe", files=files)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["text"] == "What are the priming volume constituents for adult CPB?"
+

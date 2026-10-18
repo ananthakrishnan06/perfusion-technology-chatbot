@@ -369,7 +369,180 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, m => map[m]);
 }
 
+// ==========================================
+// VOICE INPUT (SPEECH-TO-TEXT)
+// ==========================================
+let voiceRecognition = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let isVoiceRecording = false;
+
+function setVoiceRecordingUI(isRecording, statusText = 'Listening... Speak now') {
+  isVoiceRecording = isRecording;
+  const btn = document.getElementById('btn-voice-input');
+  const indicator = document.getElementById('voice-status-indicator');
+  const defaultHint = document.getElementById('default-input-hint');
+  const statusSpan = document.getElementById('voice-status-text');
+
+  if (isRecording) {
+    if (btn) {
+      btn.className = 'bg-red-50 text-red-600 border border-red-300 ring-2 ring-red-400/40 rounded-xl p-2.5 flex-shrink-0 transition active:scale-95 shadow-xs cursor-pointer relative animate-pulse';
+      btn.title = 'Stop listening';
+    }
+    if (indicator) {
+      indicator.classList.remove('hidden');
+      indicator.classList.add('flex');
+    }
+    if (defaultHint) defaultHint.classList.add('hidden');
+    if (statusSpan) statusSpan.textContent = statusText;
+  } else {
+    if (btn) {
+      btn.className = 'bg-white hover:bg-[#F5EFE6] text-neutral-700 hover:text-neutral-900 border border-subtleborder rounded-xl p-2.5 flex-shrink-0 transition active:scale-95 shadow-xs cursor-pointer relative';
+      btn.title = 'Voice input (Click to speak)';
+    }
+    if (indicator) {
+      indicator.classList.add('hidden');
+      indicator.classList.remove('flex');
+    }
+    if (defaultHint) defaultHint.classList.remove('hidden');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function toggleVoiceInput() {
+  if (isVoiceRecording) {
+    stopVoiceInput();
+    return;
+  }
+  startVoiceInput();
+}
+
+function startVoiceInput() {
+  const chatInput = document.getElementById('chat-input');
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (SpeechRecognition) {
+    try {
+      voiceRecognition = new SpeechRecognition();
+      voiceRecognition.continuous = true;
+      voiceRecognition.interimResults = true;
+      voiceRecognition.lang = 'en-US';
+
+      let initialText = chatInput ? chatInput.value : '';
+      if (initialText && !initialText.endsWith(' ')) initialText += ' ';
+
+      voiceRecognition.onstart = () => {
+        setVoiceRecordingUI(true, 'Listening... Speak now');
+      };
+
+      voiceRecognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const item = event.results[i];
+          if (item.isFinal) {
+            finalTranscript += item[0].transcript;
+          } else {
+            interimTranscript += item[0].transcript;
+          }
+        }
+
+        if (chatInput) {
+          chatInput.value = (initialText + finalTranscript + (interimTranscript ? ' ' + interimTranscript : '')).trimStart();
+          chatInput.style.height = 'auto';
+          chatInput.style.height = Math.min(chatInput.scrollHeight, 220) + 'px';
+        }
+      };
+
+      voiceRecognition.onerror = (event) => {
+        console.warn('SpeechRecognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          showToastNotification('Microphone permission denied. Please allow microphone access in your browser settings.', 'error');
+        } else if (event.error !== 'no-speech') {
+          showToastNotification(`Voice input: ${event.error}`, 'error');
+        }
+        stopVoiceInput();
+      };
+
+      voiceRecognition.onend = () => {
+        setVoiceRecordingUI(false);
+      };
+
+      voiceRecognition.start();
+      return;
+    } catch (e) {
+      console.warn('Failed to start Web Speech API, falling back to MediaRecorder:', e);
+    }
+  }
+
+  // Fallback: MediaRecorder + Groq Whisper (/api/v1/chat/transcribe)
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+        mediaRecorder.onstop = async () => {
+          stream.getTracks().forEach(track => track.stop());
+          const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+          if (audioBlob.size < 100) return;
+
+          setVoiceRecordingUI(false);
+          showToastNotification('Transcribing speech with Groq Whisper...', 'info');
+
+          try {
+            const formData = new FormData();
+            formData.append('file', audioBlob, 'voice.webm');
+            const resp = await fetch(apiEndpoint('/api/v1/chat/transcribe'), {
+              method: 'POST',
+              body: formData
+            });
+            if (!resp.ok) {
+              const err = await resp.json().catch(() => ({}));
+              throw new Error(err.detail || 'Transcription failed');
+            }
+            const data = await resp.json();
+            if (data.text && chatInput) {
+              chatInput.value = (chatInput.value ? chatInput.value + ' ' : '') + data.text;
+              chatInput.style.height = 'auto';
+              chatInput.style.height = Math.min(chatInput.scrollHeight, 220) + 'px';
+              chatInput.focus();
+            }
+          } catch (transcribeErr) {
+            showToastNotification(`Transcription error: ${transcribeErr.message}`, 'error');
+          }
+        };
+
+        mediaRecorder.start();
+        setVoiceRecordingUI(true, 'Recording audio... Speak now (click mic to stop)');
+      })
+      .catch(err => {
+        console.error('Microphone access denied:', err);
+        showToastNotification('Could not access microphone. Please enable mic permissions in your browser.', 'error');
+        setVoiceRecordingUI(false);
+      });
+  } else {
+    showToastNotification('Voice input is not supported in this browser. Please use Chrome, Edge, or Safari.', 'error');
+  }
+}
+
+function stopVoiceInput() {
+  if (voiceRecognition) {
+    try { voiceRecognition.stop(); } catch (e) {}
+    voiceRecognition = null;
+  }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch (e) {}
+    mediaRecorder = null;
+  }
+  setVoiceRecordingUI(false);
+}
+
 async function sendChatMessage() {
+  if (isVoiceRecording) stopVoiceInput();
   if (state.isChatSending) return;
 
   const input = document.getElementById('chat-input');

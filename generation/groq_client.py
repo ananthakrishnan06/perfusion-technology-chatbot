@@ -309,3 +309,31 @@ class GroqClientWrapper:
                     logger.warning(f"Groq stream error on {current_model}: {e}")
                 continue
 
+    def transcribe_audio(
+        self,
+        file_bytes: bytes,
+        filename: str = "audio.webm",
+        language: Optional[str] = "en",
+        prompt: Optional[str] = "Cardiopulmonary bypass, perfusion technology, CPB, ECMO, ACT, cardioplegia, cannula, priming"
+    ) -> str:
+        """
+        Transcribe spoken audio recording to text using Groq's official Whisper model.
+        Includes medical domain priming prompt for accurate clinical term recognition.
+        """
+        client = self._get_client()
+        try:
+            transcription = client.audio.transcriptions.create(
+                file=(filename, file_bytes),
+                model="whisper-large-v3-turbo",
+                language=language or "en",
+                prompt=prompt or "Cardiopulmonary bypass and perfusion technology terminology",
+                response_format="json",
+                temperature=0.0
+            )
+            return transcription.text.strip()
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Groq Whisper transcription error: {error_msg}")
+            raise GroqAPIError(f"Audio transcription failed: {error_msg}") from e
+
+
