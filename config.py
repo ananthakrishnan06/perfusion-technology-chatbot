@@ -42,8 +42,8 @@ class Settings(BaseSettings):
         description="Supported Groq chat model (e.g., llama-3.1-8b-instant, openai/gpt-oss-20b, llama-3.3-70b-versatile)"
     )
     GROQ_TEMPERATURE: float = Field(default=0.1, ge=0.0, le=2.0)
-    GROQ_MAX_TOKENS: int = Field(default=3500, ge=1, le=8192)
-    GROQ_REQUEST_TIMEOUT: float = Field(default=45.0, ge=1.0)
+    GROQ_MAX_TOKENS: int = Field(default=4096, ge=1, le=16384)
+    GROQ_REQUEST_TIMEOUT: float = Field(default=60.0, ge=1.0)
 
     # Google OAuth 2.0 Authentication
     GOOGLE_CLIENT_ID: str = Field(default="", description="Google Cloud OAuth 2.0 Web Client ID")

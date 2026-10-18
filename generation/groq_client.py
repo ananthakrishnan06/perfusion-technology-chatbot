@@ -246,12 +246,57 @@ class GroqClientWrapper:
                     stream=True
                 )
                 yielded_any = False
+                finish_reason = None
+                collected_tokens = []
                 for chunk in stream:
-                    if chunk.choices and chunk.choices[0].delta:
-                        content = chunk.choices[0].delta.content or ""
-                        if content:
-                            yield content
-                            yielded_any = True
+                    if chunk.choices:
+                        if chunk.choices[0].delta:
+                            content = chunk.choices[0].delta.content or ""
+                            if content:
+                                yield content
+                                collected_tokens.append(content)
+                                yielded_any = True
+                        if hasattr(chunk.choices[0], "finish_reason") and chunk.choices[0].finish_reason:
+                            finish_reason = chunk.choices[0].finish_reason
+
+                # If output hit token limit (length), seamlessly stream continuation passes
+                if finish_reason == "length" and yielded_any:
+                    logger.info(f"Groq stream reached length limit on {current_model}. Initiating stream continuation...")
+                    continuation_passes = 0
+                    accumulated = "".join(collected_tokens)
+                    while finish_reason == "length" and continuation_passes < 2:
+                        continuation_passes += 1
+                        continuation_messages = list(messages)
+                        continuation_messages.append({"role": "assistant", "content": accumulated})
+                        continuation_messages.append({
+                            "role": "user",
+                            "content": (
+                                "Please continue writing the remaining sections of your answer from exactly where you stopped above. "
+                                "Do NOT repeat what was already written. Continue seamlessly with the remaining headings, points, and conclusion."
+                            )
+                        })
+                        try:
+                            cont_stream = client.chat.completions.create(
+                                model=current_model,
+                                messages=continuation_messages,
+                                temperature=self.temperature if temperature is None else temperature,
+                                max_tokens=min(2048, self.max_tokens if max_tokens is None else max_tokens),
+                                stream=True
+                            )
+                            finish_reason = None
+                            for cont_chunk in cont_stream:
+                                if cont_chunk.choices:
+                                    if cont_chunk.choices[0].delta:
+                                        cont_content = cont_chunk.choices[0].delta.content or ""
+                                        if cont_content:
+                                            yield cont_content
+                                            accumulated += cont_content
+                                    if hasattr(cont_chunk.choices[0], "finish_reason") and cont_chunk.choices[0].finish_reason:
+                                        finish_reason = cont_chunk.choices[0].finish_reason
+                        except Exception as cont_err:
+                            logger.warning(f"Groq stream continuation error: {cont_err}")
+                            break
+
                 if yielded_any:
                     return
             except Exception as e:

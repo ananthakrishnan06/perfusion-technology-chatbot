@@ -143,7 +143,7 @@ def get_exam_configuration(marks: Optional[int]) -> Optional[ExamConfig]:
             max_words=1050,
             pages="4½–5 pages (900–1,000 words)",
             recommended_top_k=10,
-            recommended_max_tokens=3200,
+            recommended_max_tokens=4096,
             structure_directive=structure
         )
 

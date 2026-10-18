@@ -69,6 +69,15 @@ document.addEventListener('DOMContentLoaded', () => {
   calculateBSA();
   calculateFlowRate();
 
+  // Auto-resize chat textarea for multi-line and large prompts
+  const chatInputEl = document.getElementById('chat-input');
+  if (chatInputEl) {
+    chatInputEl.addEventListener('input', () => {
+      chatInputEl.style.height = 'auto';
+      chatInputEl.style.height = Math.min(chatInputEl.scrollHeight, 220) + 'px';
+    });
+  }
+
   // Control initial view based on auth session
   if (state.user && state.user.authenticated) {
     bypassLoginToGuest();
@@ -372,6 +381,7 @@ async function sendChatMessage() {
 
   state.isChatSending = true;
   input.value = '';
+  input.style.height = 'auto';
 
   // 1. Append User Message Bubble
   const userMsgEl = document.createElement('div');
@@ -408,17 +418,20 @@ async function sendChatMessage() {
   let formattedQuery = query;
   const isSimplificationRequest = /\b(easier|simpler|simplify|simple|beginner|plain english)\b/i.test(query);
   const hasExamMarks = /(?:\b|\()(\d{1,2})\s*(?:marks?|mark|[Mm])\b(?:\))?/i.test(query);
+  const isLongOrMultiPart = query.length > 180 || query.split(/\s+/).length >= 25 || query.includes('\n');
 
   if (isSimplificationRequest) {
     formattedQuery += "\n\n[Instruction: Explain the established concepts from the previous turn in very simple, easy-to-understand terms with clear bullet points. Avoid complex jargon and keep it intuitive for a beginner student.]";
   } else if (hasExamMarks) {
     formattedQuery += "\n\n[Instruction: Format as an authentic university examination answer calibrated for the specified marks (200 handwritten words/page standard). Adhere to the required structure and word count.]";
+  } else if (isLongOrMultiPart) {
+    formattedQuery += "\n\n[Instruction: Provide a comprehensive, in-depth, and well-structured answer addressing all components and sub-questions of the prompt in full detail based strictly on the clinical text.]";
   } else if (state.chatDepth === 'student') {
-    formattedQuery += "\n\n[Instruction: Provide a concise, structured educational breakdown with key definitions, formulas, and clinical pearls strictly derived from the text.]";
+    formattedQuery += "\n\n[Instruction: Provide a structured educational breakdown with key definitions, formulas, and clinical pearls strictly derived from the text.]";
   } else if (state.chatDepth === 'overview') {
-    formattedQuery += "\n\n[Instruction: Provide a very brief, high-yield bullet-point summary strictly derived from the text without any filler.]";
+    formattedQuery += "\n\n[Instruction: Provide a high-yield bullet-point summary strictly derived from the text without any filler.]";
   } else {
-    formattedQuery += "\n\n[Instruction: Provide a direct, concise answer with key clinical and technical details strictly derived from the text. Keep it short and to the point.]";
+    formattedQuery += "\n\n[Instruction: Provide an authentic, evidence-grounded answer covering all relevant clinical and technical details strictly derived from the text.]";
   }
 
   try {
@@ -429,7 +442,7 @@ async function sendChatMessage() {
 
     const payload = {
       question: formattedQuery,
-      top_k: 5,
+      top_k: isLongOrMultiPart ? 8 : 5,
       conversation_history: payloadHistory
     };
     if (state.activeDocId) {

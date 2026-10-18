@@ -79,6 +79,9 @@ class ChatService:
         if exam_config:
             # Scale retrieval depth to give broader evidence for multi-page answers
             top_k = max(top_k, exam_config.recommended_top_k)
+        elif len(clean_q.split()) >= 35 or len(clean_q) >= 200:
+            # Scale retrieval depth for comprehensive, multi-part, or case study prompts
+            top_k = max(top_k, 8)
 
         # 1. Resolve document scope: explicit document_ids take priority, otherwise auto-detect from question
         document_ids = request.document_ids
@@ -250,6 +253,8 @@ class ChatService:
         exam_config = get_exam_configuration(detected_marks)
         if exam_config:
             top_k = max(top_k, exam_config.recommended_top_k)
+        elif len(clean_q.split()) >= 35 or len(clean_q) >= 200:
+            top_k = max(top_k, 8)
 
         document_ids = request.document_ids
         if not document_ids:

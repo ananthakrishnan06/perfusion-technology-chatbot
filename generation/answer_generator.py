@@ -126,6 +126,11 @@ class AnswerGenerator:
         has_pronoun = bool(re.search(referential_pronouns, clean_q, re.IGNORECASE))
         has_directive = bool(re.search(followup_directives, clean_q, re.IGNORECASE))
 
+        # If prompt is comprehensive (>= 15 words) and not an explicit short follow-up directive,
+        # preserve the full query so hybrid retrieval matches all clinical scenario details and variables.
+        if len(q_words) >= 15 and not re.search(r"^\s*(?:make|explain|break|summarize|simplify)\s+(?:the\s+above|it|this|that)", clean_q, re.IGNORECASE):
+            return clean_q
+
         # If question is self-contained (has >= 4 words and lacks backward-referencing pronouns/directives),
         # return it directly. This avoids a 500-1000ms sequential Groq LLM network call!
         if not has_pronoun and not has_directive and len(q_words) >= 4:

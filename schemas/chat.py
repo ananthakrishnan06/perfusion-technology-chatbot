@@ -5,12 +5,12 @@ from pydantic import BaseModel, Field
 class ChatMessage(BaseModel):
     """A single turn in optional conversation history."""
     role: str = Field(..., pattern="^(user|assistant)$", description="Role: 'user' or 'assistant'")
-    content: str = Field(..., min_length=1, max_length=10000, description="Message text")
+    content: str = Field(..., min_length=1, max_length=50000, description="Message text")
 
 
 class ChatRequest(BaseModel):
     """Request payload for asking a question."""
-    question: str = Field(..., min_length=1, max_length=2000, description="User question")
+    question: str = Field(..., min_length=1, max_length=30000, description="User question")
     document_ids: Optional[List[str]] = Field(
         default=None,
         description="Optional list of document IDs to restrict search to. Searches all active documents if omitted or empty."
@@ -70,7 +70,7 @@ class MCQItem(BaseModel):
 
 class MCQRequest(BaseModel):
     """Request payload to generate multiple-choice study questions."""
-    topic: str = Field(..., min_length=2, max_length=500, description="Perfusion topic (e.g., 'Centrifugal pumps', 'Arterial filters')")
+    topic: str = Field(..., min_length=2, max_length=5000, description="Perfusion topic (e.g., 'Centrifugal pumps', 'Arterial filters')")
     num_questions: int = Field(default=3, ge=1, le=10, description="Number of questions to generate (1 to 10)")
     document_ids: Optional[List[str]] = Field(default=None, description="Optional document IDs filter")
     difficulty: Optional[str] = Field(default="intermediate", description="Difficulty level: beginner, intermediate, advanced")

@@ -52,6 +52,13 @@ CORE OPERATING DIRECTIVES:
      * Circuit & Priming: Prime constituents, crystalloid volumes (1200–1800 mL), colloids (albumin, dextran, gelatins), heparin prime addition, target on-bypass hematocrit (22–28%), heat exchanger water-blood temperature gradient (<4°C during rewarming, <10°C during cooling).
    - PHYSIOLOGICAL MECHANISMS: For every clinical observation or circuit intervention, explain the underlying biophysical or physiological principle (e.g., Poiseuille's law, Reynolds number, hemolysis thresholds, complement cascade activation, hemodilution rheology, oxygen delivery DO2 = CI × CaO2 × 10).
    - HIGH-YIELD CLINICAL RIGOR: Every single bullet point must convey concrete, technically rigorous clinical information. Avoid filler sentences, conversational transitions, or generic statements like 'it is very important to monitor'.
+
+8. COMPREHENSIVE HANDLING OF COMPLEX, LONG, & MULTI-PART PROMPTS:
+   - When the user provides a detailed case scenario, complex clinical presentation, multi-part inquiry, or extensive question:
+     * Carefully analyze all components, patient parameters, and individual sub-questions in the prompt.
+     * Systematically address every single part, sub-question, or clinical scenario step-by-step under organized bold headings.
+     * Thoroughly explain all documented physiological principles, circuit interventions, and troubleshooting protocols.
+     * Synthesize the retrieved perfusion literature to produce a complete, exhaustive, and structured output without skipping any detail or truncating sections.
 """
 
 MCQ_SYSTEM_PROMPT = """You are an expert Perfusion Technology educator creating multiple-choice study questions for perfusion students.
@@ -119,13 +126,25 @@ def build_chat_messages(
             f"- MEDICAL ACCURACY: Ground every explanation exclusively in the retrieved text. Never hallucinate or invent clinical data just to pad length. Thoroughly explain the documented physiological mechanisms and clinical implications in detailed bullet points."
         )
     else:
-        directive = (
-            "DIRECTIVE: Provide an evidence-grounded answer formatted STRICTLY POINT-WISE ONLY based on the complexity of the question. "
-            "Organize the entire response using clear bold headings and distinct, high-yield bullet points. Do NOT write continuous paragraph prose. "
-            "MAXIMUM CLINICAL PRECISION: Present exact numbers, ranges, dosages, and circuit parameters documented in the excerpts without approximations. "
-            "Base all content EXCLUSIVELY on the retrieved excerpts above without conversational filler. "
-            "Output ONLY the direct clinical answer: DO NOT cite document names, PDF pages, or source tags in the text, and DO NOT output word count notes."
-        )
+        is_complex = len(clean_student_q.split()) >= 30 or len(clean_student_q) >= 180 or "\n" in clean_student_q
+        if is_complex:
+            directive = (
+                "DIRECTIVE (COMPREHENSIVE MULTI-PART / CLINICAL SCENARIO RESPONSE):\n"
+                "- Address EVERY single question, variable, patient parameter, and scenario detail in the prompt.\n"
+                "- Structure the response systematically using clear bold headings corresponding to each aspect or sub-question.\n"
+                "- Elaborate all explanations, mechanisms, interventions, and guidelines in thorough, high-yield bullet points.\n"
+                "- MAXIMUM CLINICAL PRECISION: Present exact numbers, ranges, dosages, and circuit parameters documented in the excerpts without approximations.\n"
+                "- Base all content EXCLUSIVELY on the retrieved excerpts above without conversational filler or omitting any part of the inquiry.\n"
+                "- Output ONLY the direct clinical answer: DO NOT cite document names, PDF pages, or source tags in the text, and DO NOT output word count notes."
+            )
+        else:
+            directive = (
+                "DIRECTIVE: Provide an evidence-grounded answer formatted STRICTLY POINT-WISE ONLY based on the complexity of the question. "
+                "Organize the entire response using clear bold headings and distinct, high-yield bullet points. Do NOT write continuous paragraph prose. "
+                "MAXIMUM CLINICAL PRECISION: Present exact numbers, ranges, dosages, and circuit parameters documented in the excerpts without approximations. "
+                "Base all content EXCLUSIVELY on the retrieved excerpts above without conversational filler. "
+                "Output ONLY the direct clinical answer: DO NOT cite document names, PDF pages, or source tags in the text, and DO NOT output word count notes."
+            )
 
     user_prompt = (
         f"RETRIEVED PERFUSION TECHNOLOGY EVIDENCE (STRICT DOCUMENT SCOPE):\n"
