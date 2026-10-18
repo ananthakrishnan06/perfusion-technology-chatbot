@@ -1165,9 +1165,9 @@ async function clearChat(confirmFirst = true) {
           </div>
           <!-- Project Attribution inside Greeting -->
           <div class="pt-2.5 mt-2 border-t border-subtleborder/60 flex flex-wrap items-center justify-between text-[10px] font-mono-code text-neutral-500 gap-1.5">
-            <span>Idea: <strong class="text-neutral-800 font-semibold">Devanarayanan KS</strong></span>
+            <span class="whitespace-nowrap">Idea: <strong class="text-neutral-800 font-semibold">Devanarayanan&nbsp;KS</strong></span>
             <span class="hidden sm:inline text-neutral-300">•</span>
-            <span>Developed By: <strong class="text-neutral-800 font-semibold">Ananthakrishnan K</strong></span>
+            <span class="whitespace-nowrap">Developed By: <strong class="text-neutral-800 font-semibold">Ananthakrishnan&nbsp;K</strong></span>
           </div>
         </div>
       </div>
