@@ -1,0 +1,41 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+env/
+venv/
+.venv/
+
+# Git & IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets & local config
+.env
+*.pem
+*.key
+
+# Tests & caches
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Database artifacts
+.neon/
+node_modules/
+.agents/
+
+# Raw large PDFs (keep images lightweight; FAISS index & metadata.json are included)
+data/documents/*
+!data/documents/.gitkeep
+pdfs/*
+!pdfs/.gitkeep

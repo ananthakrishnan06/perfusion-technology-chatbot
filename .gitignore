@@ -28,12 +28,9 @@ wheels/
 *.pem
 *.key
 
-# Data & Indices (Store documents and FAISS indices locally only)
+# Raw PDFs (store locally only to save repo bandwidth)
 data/documents/*
 !data/documents/.gitkeep
-data/indices/*
-!data/indices/.gitkeep
-data/metadata.json
 pdfs/*
 !pdfs/.gitkeep
 

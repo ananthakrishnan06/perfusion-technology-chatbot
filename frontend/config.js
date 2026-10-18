@@ -1,23 +1,24 @@
 /**
  * Perfusion AI - Production Environment Configuration
  * 
- * DEPLOYMENT OPTIONS:
- * 1. Vercel Rewrites Proxy (Default & Recommended):
- *    Leave API_BASE_URL as empty string ("").
- *    All API calls (/api/v1/..., /health) will be relative and proxied by Vercel
- *    directly to your Azure App Service backend via vercel.json.
- *    Benefits: Zero CORS headaches, automatic SSL, faster response.
+ * BACKEND HOSTING: Google Cloud Run
+ * FRONTEND HOSTING: Vercel
  * 
- * 2. Direct Cross-Origin API Calls:
- *    Set API_BASE_URL to your Azure App Service backend URL:
- *    e.g., API_BASE_URL: "https://your-perfusion-backend.azurewebsites.net"
+ * Two ways to connect:
+ * 
+ * Option 1: Direct Cloud Run URL (Recommended & Simplest)
+ * Set API_BASE_URL to your Google Cloud Run service URL:
+ * e.g., API_BASE_URL: "https://perfusion-backend-xxxxxx-uc.a.run.app"
+ * 
+ * Option 2: Local Development (Default fallback)
+ * When API_BASE_URL is empty ("") and running locally on localhost:8000,
+ * it will automatically use relative API routes.
  */
 
 window.PERFUSION_CONFIG = {
-  // Azure Backend Base URL (leave "" to use Vercel proxy rewrite)
+  // Replace with your Google Cloud Run service URL once deployed, or leave "" for local/Vercel rewrite
   API_BASE_URL: "",
   
   // App Version
   VERSION: "1.0.0"
 };
-

@@ -1,30 +1,36 @@
-# Dockerfile for PerfusionGPT Backend
+# Production Dockerfile for PerfusionGPT on Google Cloud Run
 FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
 
-# Prevent Python from writing .pyc files and buffer stdout/stderr
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Prevent Python from writing .pyc files and enable unbuffered output for real-time Cloud Run logging
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8080
 
-# Install system dependencies
+# Install minimal system dependencies (curl for healthchecks, build-essential for wheels)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install python dependencies
+# Install Python requirements
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application source code
+# Copy codebase and pre-built vector indices
 COPY . .
 
-# Expose FastAPI default port
-EXPOSE 8000
+# Ensure storage directories exist
+RUN mkdir -p data/documents data/indices
 
-# Run uvicorn on dynamic Azure port or default 8000
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Expose default Cloud Run port
+EXPOSE 8080
 
+# Built-in health check for container liveness
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8080}/api/v1/health || exit 1
+
+# Launch Uvicorn bound to dynamic $PORT injected by Cloud Run
+CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}
