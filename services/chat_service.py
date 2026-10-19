@@ -122,11 +122,22 @@ class ChatService:
 
         # Quick friendly handling for greetings / identity questions
         normalized = clean_q.lower().strip().rstrip("!?.,")
-        if normalized in ("hi", "hello", "hey", "good morning", "good afternoon", "good evening", "who are you", "what can you do"):
+        greetings_triggers = (
+            "hi", "hello", "hey", "good morning", "good afternoon", "good evening",
+            "who are you", "what can you do", "help", "start", "what is this",
+            "how to use", "what can you do for me", "greetings"
+        )
+        if normalized in greetings_triggers:
             greeting_reply = (
-                "Hello! I am **Perfusion AI**, your clinical decision support and educational assistant for Perfusion Technology. "
-                "I am connected to your curriculum textbooks, clinical guidelines, and remote Cloud PostgreSQL database (with multi-turn session persistence and clinical memory). "
-                "You can ask clinical questions, explore bypass circuit setups, check priming protocols, or review board exam topics. How can I help you today?"
+                "Hello! I am **Perfusion AI**, your clinical decision support and educational assistant for Perfusion Technology and Extracorporeal Life Support.\n\n"
+                "I am equipped to assist you with:\n"
+                "• **Cardiopulmonary Bypass (CPB)**: Circuit design, roller vs. centrifugal pumps, membrane oxygenators, arterial filters, and priming protocols.\n"
+                "• **Clinical Calculations**: Step-by-step BSA, target pump flow rates, SVR, oxygen delivery ($DO_2$), and on-bypass dilutional hematocrit.\n"
+                "• **Myocardial Protection & Anticoagulation**: Antegrade/retrograde cardioplegia delivery, cold vs. warm protocols, heparin dosing (300–400 IU/kg), target ACT (>400–480 s), and protamine reversal.\n"
+                "• **Blood Gas Management**: Alpha-stat vs. pH-stat strategies, hypothermic metabolic regulation ($Q_{10}$), and sweep gas titration.\n"
+                "• **Extracorporeal Life Support (ECMO)**: VA vs. VV configurations, cannulation, and circuit troubleshooting.\n"
+                "• **Board Exam Preparation**: Point-wise answers calibrated for 3 marks, 5 marks, and 10 marks with exact clinical thresholds.\n\n"
+                "What clinical topic, circuit calculation, or examination question would you like to review?"
             )
             chat_response = ChatResponse(
                 answer=greeting_reply,
@@ -312,11 +323,22 @@ class ChatService:
 
         # Quick friendly handling for greetings / identity questions
         normalized = clean_q.lower().strip().rstrip("!?.,")
-        if normalized in ("hi", "hello", "hey", "good morning", "good afternoon", "good evening", "who are you", "what can you do"):
+        greetings_triggers = (
+            "hi", "hello", "hey", "good morning", "good afternoon", "good evening",
+            "who are you", "what can you do", "help", "start", "what is this",
+            "how to use", "what can you do for me", "greetings"
+        )
+        if normalized in greetings_triggers:
             greeting_reply = (
-                "Hello! I am **Perfusion AI**, your clinical decision support and educational assistant for Perfusion Technology. "
-                "I am connected to your curriculum textbooks, clinical guidelines, and remote Cloud PostgreSQL database (with multi-turn session persistence and clinical memory). "
-                "You can ask clinical questions, explore bypass circuit setups, check priming protocols, or review board exam topics. How can I help you today?"
+                "Hello! I am **Perfusion AI**, your clinical decision support and educational assistant for Perfusion Technology and Extracorporeal Life Support.\n\n"
+                "I am equipped to assist you with:\n"
+                "• **Cardiopulmonary Bypass (CPB)**: Circuit design, roller vs. centrifugal pumps, membrane oxygenators, arterial filters, and priming protocols.\n"
+                "• **Clinical Calculations**: Step-by-step BSA, target pump flow rates, SVR, oxygen delivery ($DO_2$), and on-bypass dilutional hematocrit.\n"
+                "• **Myocardial Protection & Anticoagulation**: Antegrade/retrograde cardioplegia delivery, cold vs. warm protocols, heparin dosing (300–400 IU/kg), target ACT (>400–480 s), and protamine reversal.\n"
+                "• **Blood Gas Management**: Alpha-stat vs. pH-stat strategies, hypothermic metabolic regulation ($Q_{10}$), and sweep gas titration.\n"
+                "• **Extracorporeal Life Support (ECMO)**: VA vs. VV configurations, cannulation, and circuit troubleshooting.\n"
+                "• **Board Exam Preparation**: Point-wise answers calibrated for 3 marks, 5 marks, and 10 marks with exact clinical thresholds.\n\n"
+                "What clinical topic, circuit calculation, or examination question would you like to review?"
             )
             meta = {
                 "type": "meta",

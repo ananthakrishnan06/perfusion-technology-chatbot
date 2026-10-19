@@ -173,8 +173,8 @@ class AnswerGenerator:
         q_words = clean_q.split()
 
         # Check for referential pronouns or conversational directives that actually depend on prior turn
-        referential_pronouns = r"\b(it|its|this|that|these|those|the above|previous|earlier|former|latter)\b"
-        followup_directives = r"\b(easier|simpler|simplify|break it down|more detail|tell me more|expand on|what about the)\b"
+        referential_pronouns = r"\b(it|its|this|that|these|those|the above|previous|earlier|former|latter|they|them)\b"
+        followup_directives = r"\b(easier|simpler|simplify|break it down|more detail|tell me more|expand on|what about|how about|pediatric|formula|calculation|table|pros and cons|advantages|disadvantages|complications|troubleshooting|management|steps)\b"
 
         has_pronoun = bool(re.search(referential_pronouns, clean_q, re.IGNORECASE))
         has_directive = bool(re.search(followup_directives, clean_q, re.IGNORECASE))
