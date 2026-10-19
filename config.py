@@ -47,12 +47,18 @@ class Settings(BaseSettings):
         description="API Key for Google Gemini (can also be read from GOOGLE_API_KEY)"
     )
     GEMINI_MODEL: str = Field(
-        default="gemini-3.6-flash",
-        description="Primary Google Gemini model (e.g. gemini-3.6-flash, gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash)"
+        default="gemini-2.0-flash",
+        description="Primary Google Gemini model (e.g. gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-pro)"
     )
     GEMINI_TEMPERATURE: float = Field(default=0.1, ge=0.0, le=2.0)
     GEMINI_MAX_TOKENS: int = Field(default=4096, ge=1, le=16384)
     GEMINI_REQUEST_TIMEOUT: float = Field(default=60.0, ge=1.0)
+
+    # Optional Dedicated Secret Key for Session Signing
+    SECRET_KEY: str = Field(default="", description="Dedicated secret key for session HMAC signing")
+
+    # Frontend URL for OAuth Redirects (e.g. https://your-domain.vercel.app)
+    FRONTEND_URL: str = Field(default="", description="Public frontend URL for OAuth callback redirects")
 
     @field_validator("GEMINI_API_KEY", mode="before")
     @classmethod

@@ -396,24 +396,29 @@ class ChatService:
             ))
 
         full_raw_answer = []
-        for token in self.answer_generator.stream_answer(
-            question=request.question,
-            retrieved_chunks=retrieved_chunks,
-            conversation_history=effective_history,
-            exam_config=exam_config
-        ):
-            full_raw_answer.append(token)
-            yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+        try:
+            for token in self.answer_generator.stream_answer(
+                question=request.question,
+                retrieved_chunks=retrieved_chunks,
+                conversation_history=effective_history,
+                exam_config=exam_config
+            ):
+                full_raw_answer.append(token)
+                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+        except Exception as stream_err:
+            logger.error(f"Error during LLM streaming: {stream_err}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(stream_err)})}\n\n"
+            return
 
         complete_text = "".join(full_raw_answer)
         cleaned_answer = clean_generated_answer(complete_text)
+        citations_dump = [c.model_dump() if hasattr(c, "model_dump") else c.dict() for c in self.answer_generator.build_citations_from_chunks(retrieved_chunks)]
 
-        yield f"data: {json.dumps({'type': 'done', 'answer': cleaned_answer})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'answer': cleaned_answer, 'citations': citations_dump})}\n\n"
 
         # Background async persistence to PostgreSQL
         if is_db_configured() and conv_id and user_id:
             try:
-                citations_dump = [c.model_dump() if hasattr(c, "model_dump") else c.dict() for c in self.answer_generator.build_citations_from_chunks(retrieved_chunks)]
                 self.conversation_service.add_turn(
                     conversation_id=conv_id,
                     user_id=user_id,

@@ -64,7 +64,7 @@
       "name": "Study & Examination",
       "short_name": "Study",
       "description": "Board exam questions and flashcards",
-      "url": "/?view=study",
+      "url": "/?view=cases",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]

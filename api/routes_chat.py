@@ -97,10 +97,17 @@ def stream_question(
         )
     except HTTPException:
         raise
-    except GroqConfigurationError as ge:
+    except (GroqConfigurationError, GeminiConfigurationError) as ge:
+        detail_msg = f"Groq API service is not configured: {str(ge)}" if isinstance(ge, GroqConfigurationError) else f"Gemini API service is not configured: {str(ge)}"
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Groq API service is not configured: {str(ge)}"
+            detail=detail_msg
+        )
+    except (GroqAPIError, GeminiAPIError) as ae:
+        detail_msg = f"Groq generation failed: {str(ae)}" if isinstance(ae, GroqAPIError) else f"Gemini generation failed: {str(ae)}"
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=detail_msg
         )
     except Exception as e:
         raise HTTPException(
@@ -123,9 +130,16 @@ async def transcribe_audio_endpoint(
     Includes clinical Perfusion Technology terminology priming for high accuracy.
     """
     try:
+        # Validate audio recording size (max 25MB)
+        max_audio_bytes = 25 * 1024 * 1024
         file_bytes = await file.read()
         if not file_bytes:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty audio recording uploaded.")
+        if len(file_bytes) > max_audio_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Audio recording exceeds 25 MB size limit."
+            )
 
         filename = file.filename or "audio.webm"
         text = chat_service.transcribe_audio(file_bytes=file_bytes, filename=filename)

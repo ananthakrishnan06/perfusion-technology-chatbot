@@ -99,9 +99,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         msg = err.get("msg", "Invalid parameter")
         error_messages.append(f"{loc}: {msg}" if loc else msg)
     combined = "; ".join(error_messages) or "Invalid request parameters"
-    logger.warning(f"Validation error on {request.method} {request.url.path}: {combined}")
+    status_422 = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status_422,
         content={
             "error": True,
             "status_code": 422,

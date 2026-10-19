@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, JSON, String, Text
 from sqlalchemy.orm import relationship
 from storage.db import Base
@@ -16,8 +16,8 @@ class User(Base):
     family_name = Column(String(100), nullable=True)
     picture = Column(String(500), nullable=True)
     role = Column(String(100), default="Clinical Perfusionist")
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    last_login_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    last_login_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     def to_dict(self):
         return {
@@ -40,8 +40,8 @@ class Conversation(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(100), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String(255), nullable=False, default="New Perfusion Inquiry")
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     user = relationship("User", backref="conversations")
@@ -86,7 +86,7 @@ class Message(Base):
     content = Column(Text, nullable=False)
     citations = Column(JSON, nullable=True)     # Stores list of citation dicts
     grounded = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
@@ -122,8 +122,8 @@ class Memory(Base):
     category = Column(String(50), nullable=False, default="clinical_pearl")  # 'clinical_topic', 'preference', 'case_detail', 'clinical_pearl'
     key = Column(String(100), index=True, nullable=False)
     content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     user = relationship("User", backref="memories")

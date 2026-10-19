@@ -28,10 +28,9 @@ class GeminiClientWrapper:
     """
 
     FALLBACK_MODELS = [
-        "gemini-3.6-flash",
-        "gemini-2.5-flash",
         "gemini-2.0-flash",
-        "gemini-1.5-flash"
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
     ]
 
     def __init__(
@@ -43,7 +42,7 @@ class GeminiClientWrapper:
         timeout: float = settings.GEMINI_REQUEST_TIMEOUT
     ):
         self.api_key = api_key if api_key is not None else (settings.GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY", ""))
-        self.model = model or "gemini-3.6-flash"
+        self.model = model or "gemini-2.0-flash"
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
@@ -57,7 +56,7 @@ class GeminiClientWrapper:
         for m in self.FALLBACK_MODELS:
             if m not in models:
                 models.append(m)
-        return models or ["gemini-3.6-flash"]
+        return models or ["gemini-2.0-flash"]
 
     def _get_client(self):
         """Get or initialize the official Google GenAI client."""

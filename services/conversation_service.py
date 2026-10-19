@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from storage.db import get_session_factory, is_db_configured
@@ -159,7 +159,7 @@ class ConversationService:
             if conv.user_id != user_id:
                 return None, "forbidden"
             conv.title = title[:250].strip() or "Untitled Inquiry"
-            conv.updated_at = datetime.utcnow()
+            conv.updated_at = datetime.now(timezone.utc)
             session.commit()
             session.refresh(conv)
             return conv.to_dict(include_messages=False), "ok"
@@ -247,7 +247,7 @@ class ConversationService:
                 grounded=grounded
             )
             session.add_all([user_msg, asst_msg])
-            conv.updated_at = datetime.utcnow()
+            conv.updated_at = datetime.now(timezone.utc)
             session.commit()
             return True, "ok"
         except Exception as e:
@@ -282,7 +282,7 @@ class ConversationService:
             if existing:
                 existing.content = content
                 existing.category = category
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = datetime.now(timezone.utc)
                 session.commit()
                 session.refresh(existing)
                 return existing.to_dict()

@@ -8,8 +8,9 @@ import hmac
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
 from fastapi.responses import RedirectResponse
 import httpx
@@ -29,8 +30,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-# Secret key for local session signing
-SESSION_SECRET = settings.GROQ_API_KEY[:32] if settings.GROQ_API_KEY else "perfusion_session_secret_key_8492"
+# Secret key for local session signing (dedicated SECRET_KEY or fallback)
+SESSION_SECRET = (
+    getattr(settings, "SECRET_KEY", "").strip()
+    or (settings.GROQ_API_KEY[:32] if settings.GROQ_API_KEY else "")
+    or "perfusion_session_secret_key_8492"
+)
 
 # In-memory session store (token -> UserProfile)
 ACTIVE_SESSIONS = {}
@@ -159,6 +164,17 @@ async def configure_auth(payload: ConfigureAuthRequest):
     """
     Dynamically update Supabase / Google OAuth credentials, persist them to .env, and update runtime settings.
     """
+    # URL validation for Supabase endpoint
+    if payload.supabase_url is not None:
+        raw_url = payload.supabase_url.strip()
+        if raw_url:
+            parsed = urlparse(raw_url)
+            if parsed.scheme not in ("https", "http") or not parsed.netloc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid Supabase URL. Must be a valid URL (e.g. https://your-project.supabase.co)."
+                )
+
     supa_url = payload.supabase_url.strip() if payload.supabase_url is not None else settings.SUPABASE_URL
     supa_key = payload.supabase_anon_key.strip() if payload.supabase_anon_key is not None else settings.SUPABASE_ANON_KEY
     client_id = payload.google_client_id.strip() if payload.google_client_id is not None else settings.GOOGLE_CLIENT_ID
@@ -220,9 +236,10 @@ async def configure_auth(payload: ConfigureAuthRequest):
 
 
 @router.get("/google/login")
-async def google_login(request: Request):
+async def google_login(request: Request, return_to: Optional[str] = None):
     """
     Standard OAuth 2.0 authorization redirect to Google Accounts.
+    Passes target frontend return URL through the OAuth state parameter.
     """
     client_id = settings.GOOGLE_CLIENT_ID.strip() if settings.GOOGLE_CLIENT_ID else ""
     if not client_id:
@@ -234,27 +251,44 @@ async def google_login(request: Request):
     base = str(request.base_url).rstrip("/")
     redirect_uri = f"{base}/api/v1/auth/google/callback"
 
+    # Resolve safe return URL (e.g. from query param, referer header, or configured FRONTEND_URL)
+    target_frontend = return_to or request.headers.get("referer") or getattr(settings, "FRONTEND_URL", "").strip() or "/"
+    if target_frontend.startswith(f"{base}/api/v1/auth") or "/api/v1/auth" in target_frontend:
+        target_frontend = getattr(settings, "FRONTEND_URL", "").strip() or "/"
+
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "offline",
-        "prompt": "select_account"
+        "prompt": "select_account",
+        "state": target_frontend
     }
     google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
     return RedirectResponse(url=google_auth_url)
 
 
 @router.get("/google/callback")
-async def google_callback(request: Request, code: Optional[str] = None, error: Optional[str] = None):
+async def google_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None
+):
     """
     OAuth 2.0 callback endpoint handling Google's authorization response.
     Exchanges code for tokens, extracts profile, and redirects to frontend with token.
     """
+    # Determine destination frontend URL
+    frontend_base = (state or getattr(settings, "FRONTEND_URL", "").strip() or "/").rstrip("/")
+    if not frontend_base:
+        frontend_base = "/"
+    delim = "&" if "?" in frontend_base else "?"
+
     if error:
         logger.warning(f"Google OAuth callback returned error: {error}")
-        return RedirectResponse(url=f"/?auth_error={error}")
+        return RedirectResponse(url=f"{frontend_base}{delim}auth_error={error}")
 
     if not code:
         raise HTTPException(
@@ -284,7 +318,7 @@ async def google_callback(request: Request, code: Optional[str] = None, error: O
         if token_resp.status_code != 200:
             err_msg = token_resp.text
             logger.error(f"Google token exchange failed: {err_msg}")
-            return RedirectResponse(url="/?auth_error=token_exchange_failed")
+            return RedirectResponse(url=f"{frontend_base}{delim}auth_error=token_exchange_failed")
 
         tokens = token_resp.json()
         access_token = tokens.get("access_token")
@@ -298,7 +332,7 @@ async def google_callback(request: Request, code: Optional[str] = None, error: O
 
         if userinfo_resp.status_code != 200:
             logger.error(f"Failed to fetch Google userinfo: {userinfo_resp.text}")
-            return RedirectResponse(url="/?auth_error=userinfo_failed")
+            return RedirectResponse(url=f"{frontend_base}{delim}auth_error=userinfo_failed")
 
         user_info = userinfo_resp.json()
         sub = user_info.get("sub")
@@ -325,11 +359,11 @@ async def google_callback(request: Request, code: Optional[str] = None, error: O
         _persist_user_to_db(profile)
         logger.info(f"Successfully authenticated Google OAuth user: {email} ({name})")
 
-        return RedirectResponse(url=f"/?auth_token={session_token}")
+        return RedirectResponse(url=f"{frontend_base}{delim}auth_token={session_token}")
 
     except Exception as e:
         logger.error(f"Exception during Google OAuth callback: {e}")
-        return RedirectResponse(url="/?auth_error=internal_error")
+        return RedirectResponse(url=f"{frontend_base}{delim}auth_error=internal_error")
 
 
 @router.post("/google", response_model=UserProfile)
@@ -411,7 +445,6 @@ def _persist_user_to_db(profile: UserProfile):
     try:
         from storage.db import is_db_configured, get_session_factory
         from storage.db_models import User
-        from datetime import datetime
 
         if not is_db_configured():
             return
@@ -427,7 +460,7 @@ def _persist_user_to_db(profile: UserProfile):
                 user.email = profile.email
                 if profile.picture:
                     user.picture = profile.picture
-                user.last_login_at = datetime.utcnow()
+                user.last_login_at = datetime.now(timezone.utc)
             else:
                 user = User(
                     id=profile.sub,
@@ -437,7 +470,7 @@ def _persist_user_to_db(profile: UserProfile):
                     family_name=profile.family_name,
                     picture=profile.picture,
                     role=profile.role,
-                    last_login_at=datetime.utcnow()
+                    last_login_at=datetime.now(timezone.utc)
                 )
                 db.add(user)
             db.commit()
@@ -733,7 +766,6 @@ async def login_with_email(payload: EmailLoginRequest, request: Request):
     # 2. Local Database Authentication (when Supabase is pending setup)
     from storage.db import is_db_configured, get_session_factory
     from storage.db_models import User
-    from datetime import datetime
 
     user_id = None
     user_name = None
@@ -749,17 +781,21 @@ async def login_with_email(payload: EmailLoginRequest, request: Request):
                     user_match = db.query(User).filter(User.email == email).first()
                     if user_match:
                         user_found = True
-                        if user_match.password_hash:
-                            if user_match.password_hash != hash_password(password):
-                                raise HTTPException(
-                                    status_code=status.HTTP_401_UNAUTHORIZED,
-                                    detail="Incorrect password for this institutional account."
-                                )
+                        if not user_match.password_hash:
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="This account was registered using Google Sign-In. Please sign in with Google."
+                            )
+                        if user_match.password_hash != hash_password(password):
+                            raise HTTPException(
+                                status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Incorrect password for this institutional account."
+                            )
                         user_id = user_match.id
                         user_name = user_match.name
                         user_picture = user_match.picture
                         user_role = user_match.role or "Clinical Perfusionist"
-                        user_match.last_login_at = datetime.utcnow()
+                        user_match.last_login_at = datetime.now(timezone.utc)
                         db.commit()
             except HTTPException:
                 raise
@@ -855,7 +891,6 @@ async def register_account(payload: RegisterRequest):
     import uuid
     from storage.db import is_db_configured, get_session_factory
     from storage.db_models import User
-    from datetime import datetime
 
     sub = f"usr_{uuid.uuid4().hex[:16]}"
     pwd_hash = hash_password(password)
@@ -877,7 +912,7 @@ async def register_account(payload: RegisterRequest):
                         name=name,
                         password_hash=pwd_hash,
                         role=role,
-                        last_login_at=datetime.utcnow()
+                        last_login_at=datetime.now(timezone.utc)
                     )
                     db.add(new_user)
                     db.commit()

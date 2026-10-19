@@ -235,6 +235,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Control initial view based on auth session
   if (state.user && state.user.authenticated) {
     bypassLoginToGuest();
+    const requestedView = urlParams.get('view');
+    if (requestedView) {
+      const viewMap = { 'study': 'cases', 'exam': 'cases', 'cases': 'cases', 'chat': 'chat', 'library': 'library', 'calculators': 'calculators', 'home': 'home' };
+      const mapped = viewMap[requestedView.toLowerCase()];
+      if (mapped) {
+        switchView(mapped);
+      }
+    }
   } else {
     openLoginScreen();
   }
@@ -335,8 +343,8 @@ async function refreshBackendData() {
     if (docRes.ok) {
       const docData = await docRes.json();
       state.documents = docData.documents || [];
-      if (typeof renderDocumentsList === 'function') {
-        renderDocumentsList();
+      if (typeof loadDocuments === 'function') {
+        loadDocuments();
       }
     }
   } catch (e) {
@@ -354,8 +362,8 @@ async function refreshBackendData() {
 
   // Refresh conversations if user active
   try {
-    if (typeof loadRecentConversations === 'function') {
-      loadRecentConversations();
+    if (typeof loadConversationsList === 'function') {
+      loadConversationsList();
     }
   } catch (e) {
     console.debug('Failed to refresh conversations', e);
@@ -416,13 +424,13 @@ async function checkHealth() {
 
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
-    // Command/Ctrl + K to focus search
+    // Command/Ctrl + K to focus search / chat input
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
-      const topSearch = document.getElementById('top-quick-search');
+      const topSearch = document.getElementById('top-quick-search') || document.getElementById('chat-input');
       if (topSearch) {
         topSearch.focus();
-        topSearch.select();
+        if (typeof topSearch.select === 'function') topSearch.select();
       }
     }
   });
@@ -1008,9 +1016,21 @@ async function sendChatMessage() {
                 streamedAnswer += eventData.content;
                 proseDiv.innerHTML = window.marked ? marked.parse(streamedAnswer) : streamedAnswer;
                 scrollChatToBottom();
+              } else if (eventData.type === 'error') {
+                throw new Error(eventData.error || 'Stream error from model');
               } else if (eventData.type === 'done') {
                 streamedAnswer = eventData.answer || streamedAnswer;
                 proseDiv.innerHTML = window.marked ? marked.parse(streamedAnswer) : streamedAnswer;
+                if (eventData.citations && Array.isArray(eventData.citations) && eventData.citations.length > 0) {
+                  state.currentCitations = eventData.citations;
+                  const bubble = assistantMsgEl.querySelector('.bg-white');
+                  if (bubble) {
+                    const citContainer = document.createElement('div');
+                    citContainer.innerHTML = renderCitationsHtml(eventData.citations);
+                    bubble.appendChild(citContainer);
+                  }
+                }
+                if (window.lucide) lucide.createIcons();
                 scrollChatToBottom();
                 loadConversationsList();
               }
@@ -1055,6 +1075,9 @@ async function sendChatMessage() {
         loadConversationsList();
       }
       typingIndicator.remove();
+      if (data.citations && Array.isArray(data.citations)) {
+        state.currentCitations = data.citations;
+      }
       assistantMsgEl.innerHTML = `
         <div class="w-8 h-8 rounded-lg bg-[#18181B] text-amber-300 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
           <i data-lucide="activity" class="w-4 h-4"></i>
@@ -1070,6 +1093,7 @@ async function sendChatMessage() {
           <div class="prose-clinical text-xs leading-relaxed text-neutral-800">
             ${window.marked ? marked.parse(data.answer) : data.answer}
           </div>
+          ${(data.citations && data.citations.length) ? renderCitationsHtml(data.citations) : ''}
         </div>
       `;
       chatMessages.appendChild(assistantMsgEl);
@@ -1179,6 +1203,41 @@ async function clearChat(confirmFirst = true) {
 // ==========================================
 // 5. CITATION INSPECTOR DRAWER
 // ==========================================
+function renderCitationsHtml(citations) {
+  if (!citations || !Array.isArray(citations) || citations.length === 0) return '';
+  const pills = citations.map((c, i) => {
+    const pageText = c.page ? `P.${c.page}` : '';
+    const src = (c.source || 'Curriculum Reference').replace(/\.pdf$/i, '');
+    const shortSrc = src.length > 24 ? src.slice(0, 22) + '…' : src;
+    const jsonStr = JSON.stringify(c).replace(/"/g, '&quot;');
+    return `
+      <button 
+        type="button"
+        onclick="showDirectCitation(${jsonStr})" 
+        class="inline-flex items-center space-x-1.5 bg-neutral-50 hover:bg-neutral-100 active:scale-95 border border-subtleborder rounded-md px-2 py-1 text-[10px] text-neutral-700 font-mono-code transition cursor-pointer shadow-2xs"
+        title="Inspect ${escapeHtml(c.source || '')} page ${c.page || 1}"
+      >
+        <i data-lucide="book-open" class="w-3 h-3 text-amber-700 flex-shrink-0"></i>
+        <span class="truncate max-w-[130px] font-medium">${escapeHtml(shortSrc)}</span>
+        ${pageText ? `<span class="text-neutral-400 font-semibold">${escapeHtml(pageText)}</span>` : ''}
+      </button>
+    `;
+  }).join('');
+
+  return `
+    <div class="mt-3 pt-2.5 border-t border-subtleborder/60">
+      <div class="flex items-center space-x-1 text-[10px] text-neutral-500 font-mono-code mb-1.5 font-medium">
+        <i data-lucide="shield-check" class="w-3 h-3 text-emerald-600"></i>
+        <span>Evidence Grounded Citations (${citations.length}):</span>
+      </div>
+      <div class="flex flex-wrap gap-1.5">
+        ${pills}
+      </div>
+    </div>
+  `;
+}
+window.renderCitationsHtml = renderCitationsHtml;
+
 function openCitationDrawer(index) {
   const citation = state.currentCitations[index];
   if (!citation) return;
@@ -2600,6 +2659,7 @@ async function loadConversationSession(convId, autoClose = true, autoSwitch = tr
               <div class="prose-clinical text-xs leading-relaxed text-neutral-800">
                 ${parsedContent}
               </div>
+              ${(m.citations && m.citations.length) ? renderCitationsHtml(m.citations) : ''}
             </div>
           `;
 
@@ -2724,7 +2784,8 @@ function isAppInstalled() {
          window.matchMedia('(display-mode: fullscreen)').matches ||
          window.matchMedia('(display-mode: minimal-ui)').matches ||
          window.navigator.standalone === true ||
-         document.referrer.includes('android-app://');
+         document.referrer.includes('android-app://') ||
+         localStorage.getItem('perfusion_pwa_installed') === 'true';
 }
 
 function isIosSafari() {
