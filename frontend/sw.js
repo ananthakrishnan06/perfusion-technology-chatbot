@@ -4,13 +4,13 @@
 // STRICT SECURITY POLICY: API calls, authentication tokens, private chat histories,
 // and user data are NEVER stored in CacheStorage.
 
-const CACHE_NAME = 'perfusion-ai-v20261019_v1';
+const CACHE_NAME = 'perfusion-ai-v20261019_v2';
 
 // Static Shell Assets to Pre-cache
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
-  '/style.css?v=20261018_v10',
+  '/style.css',
   '/config.js',
   '/app.js',
   '/manifest.json',
@@ -19,8 +19,10 @@ const PRECACHE_ASSETS = [
   '/icons/icon-maskable-192.png',
   '/icons/icon-maskable-512.png',
   '/icons/apple-touch-icon.png',
+  '/icons/favicon-32x32.png',
+  '/icons/favicon-16x16.png',
   '/favicon.png',
-  '/images/bg_perfusion.png?v=2'
+  '/images/bg_perfusion.png'
 ];
 
 // Helper: Determine if request is an API call or contains sensitive data
@@ -113,7 +115,7 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(() => {
-          return caches.match('/index.html') || caches.match('/');
+          return caches.match('/index.html', { ignoreSearch: true }) || caches.match('/', { ignoreSearch: true });
         })
     );
     return;
@@ -122,7 +124,7 @@ self.addEventListener('fetch', (event) => {
   // For static scripts, styles, icons, and images:
   // Stale-While-Revalidate (Fast offline loading + background update)
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
+    caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
