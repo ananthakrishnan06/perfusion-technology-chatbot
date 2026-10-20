@@ -28,9 +28,11 @@ class GeminiClientWrapper:
     """
 
     FALLBACK_MODELS = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro"
+        "gemini-flash-lite-latest",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-flash-latest",
+        "gemini-3.8-flash"
     ]
 
     def __init__(
@@ -42,7 +44,7 @@ class GeminiClientWrapper:
         timeout: float = settings.GEMINI_REQUEST_TIMEOUT
     ):
         self.api_key = api_key if api_key is not None else (settings.GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY", ""))
-        self.model = model or "gemini-2.0-flash"
+        self.model = model or "gemini-flash-lite-latest"
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
@@ -69,10 +71,14 @@ class GeminiClientWrapper:
 
         if self._client is None:
             try:
+                import httpx
                 from google import genai
+                custom_httpx = httpx.Client(
+                    timeout=httpx.Timeout(float(self.timeout), connect=30.0)
+                )
                 self._client = genai.Client(
                     api_key=clean_key,
-                    http_options={"timeout": float(self.timeout)}
+                    http_options={"httpx_client": custom_httpx}
                 )
             except Exception as e:
                 raise GeminiConfigurationError(f"Failed to initialize Google GenAI client: {str(e)}") from e

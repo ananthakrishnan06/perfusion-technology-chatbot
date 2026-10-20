@@ -432,7 +432,28 @@ class ChatService:
             yield f"data: {json.dumps({'type': 'error', 'error': str(stream_err)})}\n\n"
             return
 
+        if not full_raw_answer:
+            logger.warning("Streaming yielded 0 tokens. Attempting synchronous completion fallback...")
+            try:
+                sync_resp = self.answer_generator.generate_answer(
+                    question=request.question,
+                    retrieved_chunks=retrieved_chunks,
+                    conversation_history=effective_history,
+                    exam_config=exam_config
+                )
+                if sync_resp and sync_resp.answer:
+                    full_raw_answer.append(sync_resp.answer)
+                    yield f"data: {json.dumps({'type': 'token', 'content': sync_resp.answer})}\n\n"
+            except Exception as sync_err:
+                logger.error(f"Synchronous fallback also failed: {sync_err}")
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Failed to generate clinical answer. Please try again.'})}\n\n"
+                return
+
         complete_text = "".join(full_raw_answer)
+        if not complete_text.strip():
+            yield f"data: {json.dumps({'type': 'error', 'error': 'Generated answer was empty. Please try again.'})}\n\n"
+            return
+
         cleaned_answer = clean_generated_answer(complete_text)
         citations_dump = [c.model_dump() if hasattr(c, "model_dump") else c.dict() for c in self.answer_generator.build_citations_from_chunks(retrieved_chunks)]
 

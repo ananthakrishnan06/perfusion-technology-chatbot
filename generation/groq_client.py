@@ -309,6 +309,10 @@ class GroqClientWrapper:
                     logger.warning(f"Groq stream error on {current_model}: {e}")
                 continue
 
+        error_msg = f"Groq stream failed to emit tokens across candidate models: {models_to_try}"
+        logger.error(error_msg)
+        raise GroqAPIError(error_msg)
+
     def transcribe_audio(
         self,
         file_bytes: bytes,

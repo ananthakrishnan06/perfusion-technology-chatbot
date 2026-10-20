@@ -1017,7 +1017,9 @@ async function sendChatMessage() {
                 proseDiv.innerHTML = window.marked ? marked.parse(streamedAnswer) : streamedAnswer;
                 scrollChatToBottom();
               } else if (eventData.type === 'error') {
-                throw new Error(eventData.error || 'Stream error from model');
+                const streamErr = new Error(eventData.error || 'Stream error from model');
+                streamErr.isStreamError = true;
+                throw streamErr;
               } else if (eventData.type === 'done') {
                 streamedAnswer = eventData.answer || streamedAnswer;
                 proseDiv.innerHTML = window.marked ? marked.parse(streamedAnswer) : streamedAnswer;
@@ -1035,12 +1037,15 @@ async function sendChatMessage() {
                 loadConversationsList();
               }
             } catch (e) {
+              if (e && e.isStreamError) {
+                throw e;
+              }
               // Ignore single malformed chunk
             }
           }
         }
 
-        if (streamedAnswer) {
+        if (streamedAnswer && streamedAnswer.trim()) {
           state.chatHistory.push({ role: 'user', content: query });
           state.chatHistory.push({ role: 'assistant', content: streamedAnswer });
           streamSucceeded = true;
@@ -1051,6 +1056,12 @@ async function sendChatMessage() {
     }
 
     if (!streamSucceeded) {
+      if (assistantMsgEl && assistantMsgEl.parentNode) {
+        assistantMsgEl.remove();
+      }
+      if (!typingIndicator.parentNode) {
+        chatMessages.appendChild(typingIndicator);
+      }
       // Fallback to standard non-streaming /ask endpoint
       const response = await fetch(apiEndpoint('/api/v1/chat/ask'), {
         method: 'POST',

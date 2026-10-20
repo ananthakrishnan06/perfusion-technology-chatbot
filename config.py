@@ -47,8 +47,8 @@ class Settings(BaseSettings):
         description="API Key for Google Gemini (can also be read from GOOGLE_API_KEY)"
     )
     GEMINI_MODEL: str = Field(
-        default="gemini-2.0-flash",
-        description="Primary Google Gemini model (e.g. gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-pro)"
+        default="gemini-flash-lite-latest",
+        description="Primary Google Gemini model (e.g. gemini-flash-lite-latest, gemini-3.5-flash-lite, gemini-flash-latest, gemini-3.8-flash)"
     )
     GEMINI_TEMPERATURE: float = Field(default=0.1, ge=0.0, le=2.0)
     GEMINI_MAX_TOKENS: int = Field(default=4096, ge=1, le=16384)
