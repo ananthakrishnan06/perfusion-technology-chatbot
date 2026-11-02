@@ -25,8 +25,12 @@ RUN python -c "from huggingface_hub import hf_hub_download; hf_hub_download('BAA
 # Copy codebase and pre-built vector indices
 COPY . .
 
-# Ensure storage directories exist
-RUN mkdir -p data/documents data/indices
+# Ensure storage directories exist and configure dedicated non-root application user
+RUN mkdir -p data/documents data/indices \
+    && groupadd -r perfusion && useradd -r -g perfusion -d /app -s /sbin/nologin perfusion \
+    && chown -R perfusion:perfusion /app
+
+USER perfusion
 
 # Expose default Cloud Run port
 EXPOSE 8080

@@ -165,3 +165,16 @@ class LoginRateLimit(Base):
     attempt_time = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
 
+class RegisterRateLimit(Base):
+    """
+    Tracks account registration attempts per IP address across server restarts and multiple instances
+    to prevent spam signups and resource exhaustion.
+    """
+    __tablename__ = "register_rate_limits"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    ip_address = Column(String(45), index=True, nullable=False)
+    attempt_time = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+
+

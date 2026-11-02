@@ -99,6 +99,22 @@ def auth_headers() -> dict:
 
 
 @pytest.fixture
+def admin_auth_headers() -> dict:
+    """Provide valid admin authentication headers for admin-only endpoints."""
+    from api.routes_auth import generate_session_token, ACTIVE_SESSIONS
+    from schemas.auth import UserProfile
+    token = generate_session_token("test_admin_sub", "admin@clinic.edu")
+    ACTIVE_SESSIONS[token] = UserProfile(
+        sub="test_admin_sub",
+        email="admin@clinic.edu",
+        name="Test Administrator",
+        role="admin",
+        token=token
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 def sample_scanned_pdf_bytes() -> bytes:
     """Create a scanned-like PDF with minimal or no extractable text."""
     doc = fitz.open()
@@ -167,6 +183,15 @@ def temp_test_env(monkeypatch):
     }
 
     shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def clean_rate_limits():
+    """Ensure every unit test starts with clean rate limit tables."""
+    from api.routes_auth import reset_rate_limits
+    reset_rate_limits()
+    yield
+    reset_rate_limits()
 
 
 @pytest.fixture

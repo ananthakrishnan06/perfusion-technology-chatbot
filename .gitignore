@@ -48,4 +48,6 @@ Thumbs.db
 .neon
 node_modules/
 .agents/
+.session_secret
+data/.session_secret
 

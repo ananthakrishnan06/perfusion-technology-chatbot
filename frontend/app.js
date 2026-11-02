@@ -672,6 +672,28 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, m => map[m]);
 }
 
+function renderMarkdownSafely(text) {
+  if (!text) return '';
+  let rawHtml = '';
+  try {
+    if (window.marked && typeof window.marked.parse === 'function') {
+      rawHtml = window.marked.parse(text);
+    } else if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+      rawHtml = marked.parse(text);
+    } else {
+      rawHtml = escapeHtml(text).replace(/\n/g, '<br>');
+    }
+  } catch (e) {
+    rawHtml = escapeHtml(text).replace(/\n/g, '<br>');
+  }
+
+  if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
+    return DOMPurify.sanitize(rawHtml);
+  }
+  return rawHtml;
+}
+window.renderMarkdownSafely = renderMarkdownSafely;
+
 // ==========================================
 // VOICE INPUT (SPEECH-TO-TEXT)
 // ==========================================
@@ -1016,7 +1038,7 @@ async function sendChatMessage() {
                 }
               } else if (eventData.type === 'token') {
                 streamedAnswer += eventData.content;
-                proseDiv.innerHTML = window.marked ? marked.parse(streamedAnswer) : streamedAnswer;
+                proseDiv.innerHTML = renderMarkdownSafely(streamedAnswer);
                 scrollChatToBottom();
               } else if (eventData.type === 'error') {
                 const streamErr = new Error(eventData.error || 'Stream error from model');
@@ -1024,7 +1046,7 @@ async function sendChatMessage() {
                 throw streamErr;
               } else if (eventData.type === 'done') {
                 streamedAnswer = eventData.answer || streamedAnswer;
-                proseDiv.innerHTML = window.marked ? marked.parse(streamedAnswer) : streamedAnswer;
+                proseDiv.innerHTML = renderMarkdownSafely(streamedAnswer);
                 if (eventData.citations && Array.isArray(eventData.citations) && eventData.citations.length > 0) {
                   state.currentCitations = eventData.citations;
                   const bubble = assistantMsgEl.querySelector('.bg-white');
@@ -1104,7 +1126,7 @@ async function sendChatMessage() {
             </div>
           </div>
           <div class="prose-clinical text-xs leading-relaxed text-neutral-800">
-            ${window.marked ? marked.parse(data.answer) : data.answer}
+            ${renderMarkdownSafely(data.answer)}
           </div>
           ${(data.citations && data.citations.length) ? renderCitationsHtml(data.citations) : ''}
         </div>
@@ -2647,18 +2669,7 @@ async function loadConversationSession(convId, autoClose = true, autoSwitch = tr
           const asstEl = document.createElement('div');
           asstEl.className = 'flex items-start space-x-3 max-w-3xl';
 
-          let parsedContent = m.content || '';
-          try {
-            if (window.marked && typeof window.marked.parse === 'function') {
-              parsedContent = window.marked.parse(parsedContent);
-            } else if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
-              parsedContent = marked.parse(parsedContent);
-            } else {
-              parsedContent = escapeHtml(parsedContent).replace(/\n/g, '<br>');
-            }
-          } catch (e) {
-            parsedContent = escapeHtml(parsedContent).replace(/\n/g, '<br>');
-          }
+          let parsedContent = renderMarkdownSafely(m.content || '');
 
           asstEl.innerHTML = `
             <div class="w-8 h-8 rounded-lg bg-[#18181B] text-amber-300 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">

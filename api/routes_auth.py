@@ -47,6 +47,9 @@ REVOKED_TOKENS_MEM = set()
 # Rate limiting store for login attempts: ip -> list of timestamps
 LOGIN_ATTEMPTS = {}
 
+# Rate limiting store for registration attempts: ip -> list of timestamps
+REGISTER_ATTEMPTS = {}
+
 
 def is_token_revoked(token: str) -> bool:
     """Check if token hash has been invalidated/revoked in memory or PostgreSQL."""
@@ -140,6 +143,72 @@ def check_login_rate_limit(client_ip: str):
         )
     attempts.append(now)
     LOGIN_ATTEMPTS[client_ip] = attempts
+
+
+def check_register_rate_limit(client_ip: str):
+    """
+    Prevent spam account registration and automated signup attacks (max 5 signups per 15 minutes per IP).
+    Persists across server restarts and instances when PostgreSQL is configured.
+    """
+    now = time.time()
+    # 1. Check in DB if configured
+    try:
+        from storage.db import is_db_configured, get_session_factory
+        from storage.db_models import RegisterRateLimit
+
+        if is_db_configured():
+            factory = get_session_factory()
+            if factory:
+                with factory() as db:
+                    window_start = datetime.now(timezone.utc) - timedelta(minutes=15)
+                    count = db.query(RegisterRateLimit).filter(
+                        RegisterRateLimit.ip_address == client_ip,
+                        RegisterRateLimit.attempt_time >= window_start
+                    ).count()
+                    if count >= 5:
+                        raise HTTPException(
+                            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail="Too many account registration attempts. Please wait 15 minutes before creating another account."
+                        )
+                    # Record current registration attempt
+                    db.add(RegisterRateLimit(ip_address=client_ip))
+                    # Opportunistically prune expired records older than 30 minutes
+                    old_threshold = datetime.now(timezone.utc) - timedelta(minutes=30)
+                    db.query(RegisterRateLimit).filter(RegisterRateLimit.attempt_time < old_threshold).delete()
+                    db.commit()
+                    return
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug(f"DB registration rate limit note: {e}")
+
+    # 2. In-memory fallback
+    attempts = [t for t in REGISTER_ATTEMPTS.get(client_ip, []) if (now - t) < 900]
+    if len(attempts) >= 5:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many account registration attempts. Please wait 15 minutes before creating another account."
+        )
+    attempts.append(now)
+    REGISTER_ATTEMPTS[client_ip] = attempts
+
+
+def reset_rate_limits():
+    """Reset rate limit caches (useful in test environments)."""
+    LOGIN_ATTEMPTS.clear()
+    REGISTER_ATTEMPTS.clear()
+    try:
+        from storage.db import is_db_configured, get_session_factory
+        from storage.db_models import LoginRateLimit, RegisterRateLimit
+        if is_db_configured():
+            factory = get_session_factory()
+            if factory:
+                with factory() as db:
+                    db.query(LoginRateLimit).delete()
+                    db.query(RegisterRateLimit).delete()
+                    db.commit()
+    except Exception:
+        pass
 
 
 # Initialize Argon2 PasswordHasher (Argon2id - OWASP Recommended Standard)
@@ -520,7 +589,10 @@ async def configure_auth(
     Dynamically update Supabase / Google OAuth credentials, persist them to .env, and update runtime settings.
     Requires administrative privileges.
     """
-    if not current_user or (current_user.role or "").lower() not in ("admin", "administrator"):
+    user_email = (current_user.email or "").strip().lower()
+    user_role = (current_user.role or "").strip().lower()
+    is_admin = user_role in ("admin", "administrator") or user_email in settings.ADMIN_EMAILS
+    if not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Administrative privileges required to configure authentication credentials."
@@ -1040,15 +1112,28 @@ async def login_with_email(payload: EmailLoginRequest, request: Request):
 
 
 @router.post("/register", response_model=UserProfile)
-async def register_account(payload: RegisterRequest):
+async def register_account(payload: RegisterRequest, request: Request):
     """
     Register a new clinical / student institutional account.
     Registers via Supabase Auth when configured, and syncs to PostgreSQL database.
+    Rate limited to prevent mass-registration abuse.
     """
+    client_ip = request.client.host if request.client else "unknown"
+    check_register_rate_limit(client_ip)
+
     email = payload.email.strip().lower()
     name = payload.name.strip()
     password = payload.password.strip()
-    role = payload.role.strip() if payload.role else "Clinical Perfusionist"
+
+    # Prevent unauthorized privilege escalation to admin via registration
+    requested_role = payload.role.strip() if payload.role else "Clinical Perfusionist"
+    if requested_role.lower() in ("admin", "administrator"):
+        if email not in settings.ADMIN_EMAILS:
+            role = "Clinical Perfusionist"
+        else:
+            role = requested_role
+    else:
+        role = requested_role
 
     if not email or "@" not in email:
         raise HTTPException(

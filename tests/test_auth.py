@@ -173,5 +173,68 @@ def test_auth_recover_password():
     assert "message" in data
 
 
+def test_register_role_escalation_prevented():
+    """Test that unauthorized clients cannot assign themselves admin role on registration."""
+    import uuid
+    attacker_email = f"attacker_{uuid.uuid4().hex[:8]}@untrusted.com"
+    res = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": attacker_email,
+            "name": "Attacker",
+            "password": "strongPassword123!",
+            "role": "admin"
+        }
+    )
+    assert res.status_code == 200
+    profile = res.json()
+    assert profile["role"].lower() not in ("admin", "administrator")
+    assert profile["role"] == "Clinical Perfusionist"
+
+
+def test_register_rate_limiting():
+    """Test that spamming registrations from the same IP triggers 429 Too Many Requests."""
+    import uuid
+    from api.routes_auth import reset_rate_limits
+    reset_rate_limits()
+
+    # Perform 5 registrations
+    for i in range(5):
+        unique_email = f"spam_user_{i}_{uuid.uuid4().hex[:6]}@clinic.edu"
+        res = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": unique_email,
+                "name": f"Spam User {i}",
+                "password": "securePassword123!"
+            }
+        )
+        assert res.status_code == 200
+
+    # 6th attempt must be blocked by rate limiter
+    blocked_email = f"spam_user_blocked_{uuid.uuid4().hex[:6]}@clinic.edu"
+    res_blocked = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": blocked_email,
+            "name": "Blocked User",
+            "password": "securePassword123!"
+        }
+    )
+    assert res_blocked.status_code == 429
+    assert "Too many account registration attempts" in res_blocked.json()["detail"]
+    reset_rate_limits()
+
+
+def test_persistent_secret_key():
+    """Test that SECRET_KEY is stable and persistent across invocations."""
+    from config import _get_or_create_persistent_secret
+    k1 = _get_or_create_persistent_secret()
+    k2 = _get_or_create_persistent_secret()
+    assert k1 == k2
+    assert len(k1) >= 32
+
+
+
 
 

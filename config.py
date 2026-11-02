@@ -6,6 +6,35 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _get_or_create_persistent_secret() -> str:
+    """
+    Ensure a consistent, cryptographically strong secret key is used across
+    multiple worker processes and server restarts.
+    """
+    env_secret = os.getenv("SECRET_KEY", "").strip()
+    if env_secret and env_secret not in ("your_strong_random_secret_key", "your_secret_key_here"):
+        return env_secret
+
+    secret_file = Path("data/.session_secret")
+    if not secret_file.parent.exists():
+        secret_file = Path(".session_secret")
+
+    try:
+        if secret_file.exists():
+            key = secret_file.read_text(encoding="utf-8").strip()
+            if key and len(key) >= 32:
+                return key
+        new_key = secrets.token_hex(32)
+        try:
+            secret_file.parent.mkdir(parents=True, exist_ok=True)
+            secret_file.write_text(new_key, encoding="utf-8")
+        except Exception:
+            pass
+        return new_key
+    except Exception:
+        return secrets.token_hex(32)
+
+
 class Settings(BaseSettings):
     """
     Central configuration for PerfusionGPT backend.
@@ -55,19 +84,35 @@ class Settings(BaseSettings):
     GEMINI_MAX_TOKENS: int = Field(default=4096, ge=1, le=16384)
     GEMINI_REQUEST_TIMEOUT: float = Field(default=60.0, ge=1.0)
 
-    # Dedicated Secret Key for Session Signing (auto-generates cryptographically secure key if not set)
+    # Dedicated Secret Key for Session Signing (stable and persistent across restarts/workers)
     SECRET_KEY: str = Field(
-        default_factory=lambda: secrets.token_hex(32),
-        description="Dedicated secret key for session HMAC signing"
+        default_factory=_get_or_create_persistent_secret,
+        description="Dedicated persistent secret key for session HMAC signing"
     )
 
     @field_validator("SECRET_KEY", mode="before")
     @classmethod
     def resolve_secret_key(cls, v: Any) -> str:
-        """Ensure a non-empty, cryptographically secure secret key is always present."""
+        """Ensure a non-empty, cryptographically secure persistent secret key is always present."""
         if isinstance(v, str) and v.strip() and v.strip() not in ("your_strong_random_secret_key", "your_secret_key_here"):
             return v.strip()
-        return secrets.token_hex(32)
+        return _get_or_create_persistent_secret()
+
+    # Administrative users authorized for credential updates and index rebuilds
+    ADMIN_EMAILS: List[str] = Field(
+        default_factory=list,
+        description="Institutional administrator emails authorized to configure auth and rebuild indices"
+    )
+
+    @field_validator("ADMIN_EMAILS", mode="before")
+    @classmethod
+    def parse_admin_emails(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            import re
+            return [e.strip().lower() for e in re.split(r"[,;\s]+", v) if e.strip()]
+        if isinstance(v, (list, tuple, set)):
+            return [str(e).strip().lower() for e in v if str(e).strip()]
+        return []
 
     # Frontend URL for OAuth Redirects (e.g. https://your-domain.vercel.app)
     FRONTEND_URL: str = Field(default="", description="Public frontend URL for OAuth callback redirects")

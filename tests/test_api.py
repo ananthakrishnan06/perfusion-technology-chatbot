@@ -230,16 +230,25 @@ def test_study_mcq_generation(test_client, sample_perfusion_pdf_bytes, auth_head
     assert len(data["citations"]) > 0
 
 
-def test_rebuild_index_endpoint(test_client, sample_perfusion_pdf_bytes, auth_headers):
-    """Test POST /api/v1/index/rebuild endpoint."""
+def test_rebuild_index_endpoint(test_client, sample_perfusion_pdf_bytes, auth_headers, admin_auth_headers):
+    """Test POST /api/v1/index/rebuild endpoint requires admin privileges."""
+    # 1. Unauthenticated request rejected
+    res_anon = test_client.post("/api/v1/index/rebuild")
+    assert res_anon.status_code == 401
+
+    # 2. Non-admin user rejected
+    res_non_admin = test_client.post("/api/v1/index/rebuild", headers=auth_headers)
+    assert res_non_admin.status_code == 403
+
     # Ingest document
     files = [
         ("files", ("perfusion.pdf", sample_perfusion_pdf_bytes, "application/pdf"))
     ]
-    res_up = test_client.post("/api/v1/documents/upload", files=files, headers=auth_headers)
+    res_up = test_client.post("/api/v1/documents/upload", files=files, headers=admin_auth_headers)
     assert res_up.status_code == 200
 
-    res = test_client.post("/api/v1/index/rebuild")
+    # 3. Admin request succeeds
+    res = test_client.post("/api/v1/index/rebuild", headers=admin_auth_headers)
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "success"
