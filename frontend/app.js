@@ -339,7 +339,9 @@ function hideBackendLoading(connectedMsg = "Backend connected and ready!") {
 async function refreshBackendData() {
   // Query document counts
   try {
-    const docRes = await fetch(apiEndpoint('/api/v1/documents'));
+    const docRes = await fetch(apiEndpoint('/api/v1/documents'), {
+      headers: getAuthHeaders()
+    });
     if (docRes.ok) {
       const docData = await docRes.json();
       state.documents = docData.documents || [];
@@ -1430,7 +1432,9 @@ async function loadDocuments() {
   `;
 
   try {
-    const res = await fetch(apiEndpoint('/api/v1/documents'));
+    const res = await fetch(apiEndpoint('/api/v1/documents'), {
+      headers: getAuthHeaders()
+    });
     if (!res.ok) throw new Error('Failed to fetch documents');
     const data = await res.json();
     state.documents = data.documents || [];
@@ -1768,7 +1772,7 @@ async function saveSupabaseCredentials() {
   try {
     const res = await fetch(apiEndpoint('/api/v1/auth/configure'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         supabase_url: supabaseUrl,
         supabase_anon_key: supabaseKey

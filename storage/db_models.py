@@ -141,3 +141,27 @@ class Memory(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
 
+
+class RevokedToken(Base):
+    """
+    Stores SHA-256 hashes of revoked session tokens.
+    Guarantees session revocation persists across server restarts and multiple instances.
+    """
+    __tablename__ = "revoked_tokens"
+
+    token_hash = Column(String(64), primary_key=True, index=True)
+    revoked_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class LoginRateLimit(Base):
+    """
+    Tracks login attempts per IP address across server restarts and multiple instances
+    to prevent brute-force attacks.
+    """
+    __tablename__ = "login_rate_limits"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    ip_address = Column(String(45), index=True, nullable=False)
+    attempt_time = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+

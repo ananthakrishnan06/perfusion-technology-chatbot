@@ -28,25 +28,110 @@ from schemas.auth import (
 
 logger = logging.getLogger(__name__)
 
+import secrets
+from datetime import datetime, timezone, timedelta
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-# Secret key for local session signing (dedicated SECRET_KEY or fallback)
-SESSION_SECRET = (
-    getattr(settings, "SECRET_KEY", "").strip()
-    or (settings.GROQ_API_KEY[:32] if settings.GROQ_API_KEY else "")
-    or "perfusion_session_secret_key_8492"
-)
+# Secret key for local session signing (must be from settings.SECRET_KEY or secure runtime generation)
+SESSION_SECRET = getattr(settings, "SECRET_KEY", "").strip()
+if not SESSION_SECRET or SESSION_SECRET in ("your_strong_random_secret_key", "perfusion_session_secret_key_8492"):
+    SESSION_SECRET = secrets.token_hex(32)
 
 # In-memory session store (token -> UserProfile)
 ACTIVE_SESSIONS = {}
+
+# In-memory cache of revoked token hashes (SHA-256)
+REVOKED_TOKENS_MEM = set()
 
 # Rate limiting store for login attempts: ip -> list of timestamps
 LOGIN_ATTEMPTS = {}
 
 
+def is_token_revoked(token: str) -> bool:
+    """Check if token hash has been invalidated/revoked in memory or PostgreSQL."""
+    if not token:
+        return True
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    if token_hash in REVOKED_TOKENS_MEM:
+        return True
+
+    try:
+        from storage.db import is_db_configured, get_session_factory
+        from storage.db_models import RevokedToken
+        if is_db_configured():
+            factory = get_session_factory()
+            if factory:
+                with factory() as db:
+                    found = db.query(RevokedToken).filter(RevokedToken.token_hash == token_hash).first()
+                    if found:
+                        REVOKED_TOKENS_MEM.add(token_hash)
+                        return True
+    except Exception as e:
+        logger.debug(f"DB check for revoked token: {e}")
+
+    return False
+
+
+def revoke_token(token: str):
+    """Revoke a session token in memory and PostgreSQL across server restarts."""
+    if not token:
+        return
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    REVOKED_TOKENS_MEM.add(token_hash)
+    try:
+        from storage.db import is_db_configured, get_session_factory
+        from storage.db_models import RevokedToken
+        if is_db_configured():
+            factory = get_session_factory()
+            if factory:
+                with factory() as db:
+                    existing = db.query(RevokedToken).filter(RevokedToken.token_hash == token_hash).first()
+                    if not existing:
+                        db.add(RevokedToken(token_hash=token_hash))
+                        db.commit()
+    except Exception as e:
+        logger.warning(f"Error persisting revoked token to DB: {e}")
+
+
 def check_login_rate_limit(client_ip: str):
-    """Prevent brute-force password guessing attacks (max 20 attempts per 5 minutes per IP)."""
+    """
+    Prevent brute-force password guessing attacks (max 20 attempts per 5 minutes per IP).
+    Persists across server restarts and instances when PostgreSQL is configured.
+    """
     now = time.time()
+    # 1. Check in DB if configured
+    try:
+        from storage.db import is_db_configured, get_session_factory
+        from storage.db_models import LoginRateLimit
+
+        if is_db_configured():
+            factory = get_session_factory()
+            if factory:
+                with factory() as db:
+                    window_start = datetime.now(timezone.utc) - timedelta(minutes=5)
+                    count = db.query(LoginRateLimit).filter(
+                        LoginRateLimit.ip_address == client_ip,
+                        LoginRateLimit.attempt_time >= window_start
+                    ).count()
+                    if count >= 20:
+                        raise HTTPException(
+                            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail="Too many authentication attempts. Please wait 5 minutes before trying again."
+                        )
+                    # Record current attempt
+                    db.add(LoginRateLimit(ip_address=client_ip))
+                    # Opportunistically prune expired records older than 10 minutes
+                    old_threshold = datetime.now(timezone.utc) - timedelta(minutes=10)
+                    db.query(LoginRateLimit).filter(LoginRateLimit.attempt_time < old_threshold).delete()
+                    db.commit()
+                    return
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug(f"DB rate limit query note: {e}")
+
+    # 2. In-memory fallback
     attempts = [t for t in LOGIN_ATTEMPTS.get(client_ip, []) if (now - t) < 300]
     if len(attempts) >= 20:
         raise HTTPException(
@@ -55,6 +140,108 @@ def check_login_rate_limit(client_ip: str):
         )
     attempts.append(now)
     LOGIN_ATTEMPTS[client_ip] = attempts
+
+
+# Initialize Argon2 PasswordHasher (Argon2id - OWASP Recommended Standard)
+try:
+    from argon2 import PasswordHasher
+    from argon2.exceptions import VerifyMismatchError
+    _password_hasher = PasswordHasher(
+        time_cost=3,
+        memory_cost=65536,
+        parallelism=4,
+        hash_len=32,
+        salt_len=16
+    )
+except ImportError:
+    _password_hasher = None
+
+# Pre-computed dummy hash to mitigate timing attacks on non-existent users
+DUMMY_ARGON2_HASH = (
+    _password_hasher.hash("dummy_timing_protection_password")
+    if _password_hasher
+    else "$argon2id$v=19$m=65536,t=3,p=4$dummy$dummy"
+)
+
+
+def hash_password(password: str) -> str:
+    """Hash password using Argon2id with unique per-user cryptographically secure salt."""
+    if _password_hasher:
+        return _password_hasher.hash(password.strip())
+    # Fallback to PBKDF2-HMAC-SHA256 with random 16-byte salt if argon2 not available
+    salt = secrets.token_hex(16)
+    kdf = hashlib.pbkdf2_hmac("sha256", password.strip().encode(), salt.encode(), 100000)
+    return f"pbkdf2:{salt}:{kdf.hex()}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    """Verify password against Argon2id, PBKDF2, or legacy hash."""
+    if not stored_hash:
+        return False
+    if stored_hash.startswith("$argon2"):
+        if _password_hasher:
+            try:
+                return _password_hasher.verify(stored_hash, password.strip())
+            except VerifyMismatchError:
+                return False
+            except Exception:
+                return False
+        return False
+    elif stored_hash.startswith("pbkdf2:"):
+        try:
+            _, salt, expected_hex = stored_hash.split(":")
+            kdf = hashlib.pbkdf2_hmac("sha256", password.strip().encode(), salt.encode(), 100000)
+            return hmac.compare_digest(kdf.hex(), expected_hex)
+        except Exception:
+            return False
+    else:
+        # Legacy HMAC-SHA256 hash compatibility
+        legacy_expected = hmac.new(SESSION_SECRET.encode(), password.strip().encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(stored_hash, legacy_expected)
+
+
+def is_safe_redirect_url(url: Optional[str], request: Request) -> bool:
+    """
+    Validate that a redirect URL is strictly on the same origin or configured frontend.
+    Rejects any attacker-controlled external URLs or protocol-relative URLs (e.g. //evil.com).
+    """
+    if not url or not isinstance(url, str):
+        return False
+    url = url.strip()
+    if not url:
+        return False
+
+    # Disallow protocol-relative URLs (e.g. //evil.com) and backslashes (e.g. /\\evil.com)
+    if url.startswith("//") or url.startswith("/\\"):
+        return False
+
+    # Safe relative paths (exclude recursive auth loops)
+    if url.startswith("/") and not url.startswith("/api/v1/auth"):
+        return True
+
+    # Absolute URL checks
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+
+        allowed_hosts = set()
+        if request.url.netloc:
+            allowed_hosts.add(request.url.netloc.lower())
+        frontend_url = getattr(settings, "FRONTEND_URL", "").strip()
+        if frontend_url:
+            f_parsed = urlparse(frontend_url)
+            if f_parsed.netloc:
+                allowed_hosts.add(f_parsed.netloc.lower())
+        for orig in getattr(settings, "CORS_ORIGINS", []):
+            if orig != "*":
+                o_parsed = urlparse(orig)
+                if o_parsed.netloc:
+                    allowed_hosts.add(o_parsed.netloc.lower())
+
+        return parsed.netloc.lower() in allowed_hosts
+    except Exception:
+        return False
 
 
 def is_supabase_configured() -> bool:
@@ -112,8 +299,10 @@ SESSION_MAX_AGE_SECONDS = 7 * 24 * 3600
 
 
 def verify_session_token(token: str) -> bool:
-    """Verify validity and expiration of a session token."""
+    """Verify validity, expiration, and non-revocation of a session token."""
     try:
+        if is_token_revoked(token):
+            return False
         parts = token.split(":")
         if len(parts) != 4:
             return False
@@ -135,9 +324,172 @@ def verify_session_token(token: str) -> bool:
         return False
 
 
-def hash_password(password: str) -> str:
-    """Hash password using HMAC-SHA256 with secret salt."""
-    return hmac.new(SESSION_SECRET.encode(), password.strip().encode(), hashlib.sha256).hexdigest()
+def _persist_user_to_db(profile: UserProfile):
+    """Safely persist or update authenticated Google user in PostgreSQL."""
+    try:
+        from storage.db import is_db_configured, get_session_factory
+        from storage.db_models import User
+
+        if not is_db_configured():
+            return
+
+        factory = get_session_factory()
+        if not factory:
+            return
+
+        with factory() as db:
+            user = db.query(User).filter(User.id == profile.sub).first()
+            if user:
+                user.name = profile.name
+                user.email = profile.email
+                if profile.picture:
+                    user.picture = profile.picture
+                user.last_login_at = datetime.now(timezone.utc)
+            else:
+                user = User(
+                    id=profile.sub,
+                    email=profile.email,
+                    name=profile.name,
+                    given_name=profile.given_name,
+                    family_name=profile.family_name,
+                    picture=profile.picture,
+                    role=profile.role,
+                    last_login_at=datetime.now(timezone.utc)
+                )
+                db.add(user)
+            db.commit()
+    except Exception as e:
+        logger.warning(f"Note on user persistence to PostgreSQL: {e}")
+
+
+async def resolve_user_from_token(token: str) -> Optional[UserProfile]:
+    """
+    Resolve a UserProfile from a token by checking:
+    1. Active in-memory session cache (if not revoked)
+    2. Supabase Auth API
+    3. Tamper-proof signed local HMAC session tokens
+    """
+    if not token or not token.strip():
+        return None
+    token = token.strip()
+
+    # Reject revoked tokens immediately
+    if is_token_revoked(token):
+        ACTIVE_SESSIONS.pop(token, None)
+        return None
+
+    # 1. Check in-memory cache
+    if token in ACTIVE_SESSIONS:
+        return ACTIVE_SESSIONS[token]
+
+    # 2. Check Supabase token validity
+    if is_supabase_configured():
+        try:
+            status_code, resp_data = await supabase_request("GET", "/user", bearer_token=token)
+            if status_code == 200:
+                sub = resp_data.get("id")
+                email = resp_data.get("email")
+                meta = resp_data.get("user_metadata") or {}
+                name = meta.get("name") or meta.get("full_name") or (email.split("@")[0].replace(".", " ").title() if email else "Clinician")
+                picture = meta.get("avatar_url") or meta.get("picture")
+                role = meta.get("role") or "Clinical Perfusionist"
+
+                profile = UserProfile(
+                    sub=sub,
+                    email=email,
+                    name=name,
+                    picture=picture,
+                    role=role,
+                    authenticated=True,
+                    token=token
+                )
+                ACTIVE_SESSIONS[token] = profile
+                _persist_user_to_db(profile)
+                return profile
+        except Exception as e:
+            logger.debug(f"Supabase token lookup note: {e}")
+
+    # 3. Check local signed session token
+    if verify_session_token(token):
+        try:
+            parts = token.split(":")
+            sub, email, timestamp, signature = parts
+            name = email.split("@")[0].replace(".", " ").title()
+            picture = None
+            role = "Clinical Perfusionist"
+
+            try:
+                from storage.db import is_db_configured, get_session_factory
+                from storage.db_models import User
+
+                if is_db_configured():
+                    factory = get_session_factory()
+                    if factory:
+                        with factory() as db:
+                            u = db.query(User).filter(User.id == sub).first()
+                            if u:
+                                name = u.name
+                                picture = u.picture
+                                role = u.role
+            except Exception:
+                pass
+
+            restored_profile = UserProfile(
+                sub=sub,
+                email=email,
+                name=name,
+                picture=picture,
+                role=role,
+                authenticated=True,
+                token=token
+            )
+            ACTIVE_SESSIONS[token] = restored_profile
+            return restored_profile
+        except Exception:
+            pass
+
+    return None
+
+
+async def get_current_user(authorization: Optional[str] = Header(None)) -> UserProfile:
+    """
+    FastAPI dependency that enforces verified user authentication.
+    Returns the authenticated UserProfile (with stable UID `sub`).
+    Raises HTTP 401 if token is missing, invalid, or expired.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please sign in to access your chat sessions."
+        )
+
+    token = authorization.replace("Bearer ", "").strip()
+    user = await resolve_user_from_token(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token."
+        )
+    return user
+
+
+async def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Optional[UserProfile]:
+    """
+    FastAPI dependency for endpoints supporting both authenticated users and guest access.
+    Returns UserProfile if valid Bearer token provided, None if no Authorization header is present,
+    or raises HTTP 401 if a token was supplied but is invalid/expired.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+
+    token = authorization.replace("Bearer ", "").strip()
+    user = await resolve_user_from_token(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token."
+        )
+    return user
 
 
 @router.get("/config", response_model=AuthConfigResponse)
@@ -160,10 +512,20 @@ async def get_auth_config():
 
 
 @router.post("/configure", response_model=AuthConfigResponse)
-async def configure_auth(payload: ConfigureAuthRequest):
+async def configure_auth(
+    payload: ConfigureAuthRequest,
+    current_user: UserProfile = Depends(get_current_user)
+):
     """
     Dynamically update Supabase / Google OAuth credentials, persist them to .env, and update runtime settings.
+    Requires administrative privileges.
     """
+    if not current_user or (current_user.role or "").lower() not in ("admin", "administrator"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrative privileges required to configure authentication credentials."
+        )
+
     # URL validation for Supabase endpoint
     if payload.supabase_url is not None:
         raw_url = payload.supabase_url.strip()
@@ -240,6 +602,7 @@ async def google_login(request: Request, return_to: Optional[str] = None):
     """
     Standard OAuth 2.0 authorization redirect to Google Accounts.
     Passes target frontend return URL through the OAuth state parameter.
+    Validates redirect destination to prevent open redirect vulnerabilities.
     """
     client_id = settings.GOOGLE_CLIENT_ID.strip() if settings.GOOGLE_CLIENT_ID else ""
     if not client_id:
@@ -251,9 +614,11 @@ async def google_login(request: Request, return_to: Optional[str] = None):
     base = str(request.base_url).rstrip("/")
     redirect_uri = f"{base}/api/v1/auth/google/callback"
 
-    # Resolve safe return URL (e.g. from query param, referer header, or configured FRONTEND_URL)
-    target_frontend = return_to or request.headers.get("referer") or getattr(settings, "FRONTEND_URL", "").strip() or "/"
-    if target_frontend.startswith(f"{base}/api/v1/auth") or "/api/v1/auth" in target_frontend:
+    # Resolve safe return URL (strictly validate to prevent open redirect to external domains)
+    candidate_target = return_to or request.headers.get("referer") or getattr(settings, "FRONTEND_URL", "").strip() or "/"
+    if is_safe_redirect_url(candidate_target, request):
+        target_frontend = candidate_target
+    else:
         target_frontend = getattr(settings, "FRONTEND_URL", "").strip() or "/"
 
     params = {
@@ -279,9 +644,14 @@ async def google_callback(
     """
     OAuth 2.0 callback endpoint handling Google's authorization response.
     Exchanges code for tokens, extracts profile, and redirects to frontend with token.
+    Strictly validates destination in state to prevent token leakage via open redirect.
     """
-    # Determine destination frontend URL
-    frontend_base = (state or getattr(settings, "FRONTEND_URL", "").strip() or "/").rstrip("/")
+    # Determine destination frontend URL safely
+    if is_safe_redirect_url(state, request):
+        frontend_base = state.rstrip("/")
+    else:
+        frontend_base = (getattr(settings, "FRONTEND_URL", "").strip() or "/").rstrip("/")
+
     if not frontend_base:
         frontend_base = "/"
     delim = "&" if "?" in frontend_base else "?"
@@ -440,169 +810,6 @@ async def authenticate_google(payload: GoogleAuthRequest):
         )
 
 
-def _persist_user_to_db(profile: UserProfile):
-    """Safely persist or update authenticated Google user in PostgreSQL."""
-    try:
-        from storage.db import is_db_configured, get_session_factory
-        from storage.db_models import User
-
-        if not is_db_configured():
-            return
-
-        factory = get_session_factory()
-        if not factory:
-            return
-
-        with factory() as db:
-            user = db.query(User).filter(User.id == profile.sub).first()
-            if user:
-                user.name = profile.name
-                user.email = profile.email
-                if profile.picture:
-                    user.picture = profile.picture
-                user.last_login_at = datetime.now(timezone.utc)
-            else:
-                user = User(
-                    id=profile.sub,
-                    email=profile.email,
-                    name=profile.name,
-                    given_name=profile.given_name,
-                    family_name=profile.family_name,
-                    picture=profile.picture,
-                    role=profile.role,
-                    last_login_at=datetime.now(timezone.utc)
-                )
-                db.add(user)
-            db.commit()
-    except Exception as e:
-        logger.warning(f"Note on user persistence to PostgreSQL: {e}")
-
-
-async def resolve_user_from_token(token: str) -> Optional[UserProfile]:
-    """
-    Resolve a UserProfile from a token by checking:
-    1. Active in-memory session cache
-    2. Supabase Auth API
-    3. Tamper-proof signed local HMAC session tokens
-    """
-    if not token or not token.strip():
-        return None
-    token = token.strip()
-
-    # 1. Check in-memory cache
-    if token in ACTIVE_SESSIONS:
-        return ACTIVE_SESSIONS[token]
-
-    # 2. Check Supabase token validity
-    if is_supabase_configured():
-        try:
-            status_code, resp_data = await supabase_request("GET", "/user", bearer_token=token)
-            if status_code == 200:
-                sub = resp_data.get("id")
-                email = resp_data.get("email")
-                meta = resp_data.get("user_metadata") or {}
-                name = meta.get("name") or meta.get("full_name") or (email.split("@")[0].replace(".", " ").title() if email else "Clinician")
-                picture = meta.get("avatar_url") or meta.get("picture")
-                role = meta.get("role") or "Clinical Perfusionist"
-
-                profile = UserProfile(
-                    sub=sub,
-                    email=email,
-                    name=name,
-                    picture=picture,
-                    role=role,
-                    authenticated=True,
-                    token=token
-                )
-                ACTIVE_SESSIONS[token] = profile
-                _persist_user_to_db(profile)
-                return profile
-        except Exception as e:
-            logger.debug(f"Supabase token lookup note: {e}")
-
-    # 3. Check local signed session token
-    if verify_session_token(token):
-        try:
-            parts = token.split(":")
-            sub, email, timestamp, signature = parts
-            name = email.split("@")[0].replace(".", " ").title()
-            picture = None
-            role = "Clinical Perfusionist"
-
-            try:
-                from storage.db import is_db_configured, get_session_factory
-                from storage.db_models import User
-
-                if is_db_configured():
-                    factory = get_session_factory()
-                    if factory:
-                        with factory() as db:
-                            u = db.query(User).filter(User.id == sub).first()
-                            if u:
-                                name = u.name
-                                picture = u.picture
-                                role = u.role
-            except Exception:
-                pass
-
-            restored_profile = UserProfile(
-                sub=sub,
-                email=email,
-                name=name,
-                picture=picture,
-                role=role,
-                authenticated=True,
-                token=token
-            )
-            ACTIVE_SESSIONS[token] = restored_profile
-            return restored_profile
-        except Exception:
-            pass
-
-    return None
-
-
-async def get_current_user(authorization: Optional[str] = Header(None)) -> UserProfile:
-    """
-    FastAPI dependency that enforces verified user authentication.
-    Returns the authenticated UserProfile (with stable UID `sub`).
-    Raises HTTP 401 if token is missing, invalid, or expired.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required. Please sign in to access your chat sessions."
-        )
-
-    token = authorization.replace("Bearer ", "").strip()
-    user = await resolve_user_from_token(token)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session token."
-        )
-    return user
-
-
-async def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Optional[UserProfile]:
-    """
-    FastAPI dependency for endpoints supporting both authenticated users and guest access.
-    Returns UserProfile if valid Bearer token provided, None if no Authorization header is present,
-    or raises HTTP 401 if a token was supplied but is invalid/expired.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-
-    token = authorization.replace("Bearer ", "").strip()
-    user = await resolve_user_from_token(token)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session token."
-        )
-    return user
-
-
 @router.get("/me", response_model=UserProfile)
 async def me_endpoint(current_user: UserProfile = Depends(get_current_user)):
     """
@@ -615,11 +822,12 @@ async def me_endpoint(current_user: UserProfile = Depends(get_current_user)):
 @router.post("/logout")
 async def logout(authorization: Optional[str] = Header(None)):
     """
-    Log out and invalidate current session in cache and Supabase.
+    Log out and invalidate current session in cache, database, and Supabase.
     """
     if authorization and authorization.startswith("Bearer "):
         token = authorization.replace("Bearer ", "").strip()
         ACTIVE_SESSIONS.pop(token, None)
+        revoke_token(token)
         if is_supabase_configured():
             try:
                 await supabase_request("POST", "/logout", bearer_token=token)
@@ -738,7 +946,7 @@ async def login_with_email(payload: EmailLoginRequest, request: Request):
             logger.warning(f"Supabase login failed for {email}: {err_msg}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Supabase authentication failed: {err_msg}"
+                detail="Invalid email or password."
             )
 
         user_info = resp_data.get("user") or {}
@@ -771,7 +979,7 @@ async def login_with_email(payload: EmailLoginRequest, request: Request):
     user_name = None
     user_picture = None
     user_role = None
-    user_found = False
+    authenticated = False
 
     if is_db_configured():
         factory = get_session_factory()
@@ -779,33 +987,35 @@ async def login_with_email(payload: EmailLoginRequest, request: Request):
             try:
                 with factory() as db:
                     user_match = db.query(User).filter(User.email == email).first()
-                    if user_match:
-                        user_found = True
-                        if not user_match.password_hash:
-                            raise HTTPException(
-                                status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="This account was registered using Google Sign-In. Please sign in with Google."
-                            )
-                        if user_match.password_hash != hash_password(password):
-                            raise HTTPException(
-                                status_code=status.HTTP_401_UNAUTHORIZED,
-                                detail="Incorrect password for this institutional account."
-                            )
-                        user_id = user_match.id
-                        user_name = user_match.name
-                        user_picture = user_match.picture
-                        user_role = user_match.role or "Clinical Perfusionist"
-                        user_match.last_login_at = datetime.now(timezone.utc)
-                        db.commit()
-            except HTTPException:
-                raise
+                    if user_match and user_match.password_hash:
+                        if verify_password(password, user_match.password_hash):
+                            authenticated = True
+                            user_id = user_match.id
+                            user_name = user_match.name
+                            user_picture = user_match.picture
+                            user_role = user_match.role or "Clinical Perfusionist"
+                            user_match.last_login_at = datetime.now(timezone.utc)
+                            db.commit()
+                    else:
+                        # Dummy password verification to equalize timing and prevent user enumeration
+                        if _password_hasher:
+                            try:
+                                _password_hasher.verify(DUMMY_ARGON2_HASH, password)
+                            except Exception:
+                                pass
             except Exception as e:
                 logger.warning(f"Error querying user table in login: {e}")
+    else:
+        if _password_hasher:
+            try:
+                _password_hasher.verify(DUMMY_ARGON2_HASH, password)
+            except Exception:
+                pass
 
-    if not user_found:
+    if not authenticated:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account not found. Please verify your email or click 'Create an account'."
+            detail="Invalid email or password."
         )
 
     sub = user_id or f"inst_{hashlib.md5(email.encode()).hexdigest()[:16]}"

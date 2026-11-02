@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -9,6 +10,8 @@ from generation.groq_client import GroqConfigurationError, GroqAPIError
 from generation.gemini_client import GeminiConfigurationError, GeminiAPIError
 from api.dependencies import get_chat_service, get_optional_current_user
 from storage.db import is_db_configured
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -40,21 +43,22 @@ def ask_question(
     except HTTPException:
         raise
     except (GroqConfigurationError, GeminiConfigurationError) as ge:
-        detail_msg = f"Groq API service is not configured: {str(ge)}" if isinstance(ge, GroqConfigurationError) else f"Gemini API service is not configured: {str(ge)}"
+        logger.error(f"LLM configuration error in ask_question: {ge}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=detail_msg
+            detail="AI generation service is not properly configured. Please contact the administrator."
         )
     except (GroqAPIError, GeminiAPIError) as ae:
-        detail_msg = f"Groq generation failed: {str(ae)}" if isinstance(ae, GroqAPIError) else f"Gemini generation failed: {str(ae)}"
+        logger.error(f"LLM generation error in ask_question: {ae}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=detail_msg
+            detail="AI generation service encountered an upstream provider error. Please try again."
         )
     except Exception as e:
+        logger.error(f"Unhandled error in ask_question: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while answering your question: {str(e)}"
+            detail="An unexpected error occurred while answering your question. Please try again."
         )
 
 
@@ -98,21 +102,22 @@ def stream_question(
     except HTTPException:
         raise
     except (GroqConfigurationError, GeminiConfigurationError) as ge:
-        detail_msg = f"Groq API service is not configured: {str(ge)}" if isinstance(ge, GroqConfigurationError) else f"Gemini API service is not configured: {str(ge)}"
+        logger.error(f"LLM configuration error in stream_question: {ge}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=detail_msg
+            detail="AI generation service is not properly configured. Please contact the administrator."
         )
     except (GroqAPIError, GeminiAPIError) as ae:
-        detail_msg = f"Groq generation failed: {str(ae)}" if isinstance(ae, GroqAPIError) else f"Gemini generation failed: {str(ae)}"
+        logger.error(f"LLM generation error in stream_question: {ae}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=detail_msg
+            detail="AI generation service encountered an upstream provider error. Please try again."
         )
     except Exception as e:
+        logger.error(f"Unhandled error in stream_question: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while streaming your answer: {str(e)}"
+            detail="An unexpected error occurred while streaming your answer. Please try again."
         )
 
 
@@ -130,16 +135,25 @@ async def transcribe_audio_endpoint(
     Includes clinical Perfusion Technology terminology priming for high accuracy.
     """
     try:
-        # Validate audio recording size (max 25MB)
+        # Validate audio recording size (max 25MB) incrementally in chunks
         max_audio_bytes = 25 * 1024 * 1024
-        file_bytes = await file.read()
+        total_audio = 0
+        audio_chunks = []
+        while True:
+            chunk = await file.read(64 * 1024)
+            if not chunk:
+                break
+            total_audio += len(chunk)
+            if total_audio > max_audio_bytes:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Audio recording exceeds 25 MB size limit."
+                )
+            audio_chunks.append(chunk)
+
+        file_bytes = b"".join(audio_chunks)
         if not file_bytes:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty audio recording uploaded.")
-        if len(file_bytes) > max_audio_bytes:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="Audio recording exceeds 25 MB size limit."
-            )
 
         filename = file.filename or "audio.webm"
         text = chat_service.transcribe_audio(file_bytes=file_bytes, filename=filename)
@@ -147,19 +161,22 @@ async def transcribe_audio_endpoint(
     except HTTPException:
         raise
     except GroqConfigurationError as ge:
+        logger.error(f"Transcription configuration error: {ge}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Groq API service is not configured: {str(ge)}"
+            detail="Audio transcription service is not configured."
         )
     except GroqAPIError as ae:
+        logger.error(f"Transcription generation failed: {ae}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Audio transcription failed: {str(ae)}"
+            detail="Audio transcription failed due to an upstream service error. Please try again."
         )
     except Exception as e:
+        logger.error(f"Unhandled error in transcribe: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while transcribing audio: {str(e)}"
+            detail="An error occurred while transcribing your audio recording. Please try again."
         )
 
 

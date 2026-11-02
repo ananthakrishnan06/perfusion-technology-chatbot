@@ -60,11 +60,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS for future Stitch frontend integration
+# Configure CORS
+# Defense-in-depth: Never allow credentials when wildcard origin is set (prevents arbitrary origin reflection)
+cors_allow_creds = bool(settings.CORS_ALLOW_CREDENTIALS and ("*" not in settings.CORS_ORIGINS))
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_credentials=cors_allow_creds,
     allow_methods=settings.CORS_ALLOW_METHODS,
     allow_headers=settings.CORS_ALLOW_HEADERS,
 )

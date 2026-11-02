@@ -1,4 +1,5 @@
 import os
+import secrets
 from pathlib import Path
 from typing import List, Any, Union
 from pydantic import Field, field_validator
@@ -54,8 +55,19 @@ class Settings(BaseSettings):
     GEMINI_MAX_TOKENS: int = Field(default=4096, ge=1, le=16384)
     GEMINI_REQUEST_TIMEOUT: float = Field(default=60.0, ge=1.0)
 
-    # Optional Dedicated Secret Key for Session Signing
-    SECRET_KEY: str = Field(default="", description="Dedicated secret key for session HMAC signing")
+    # Dedicated Secret Key for Session Signing (auto-generates cryptographically secure key if not set)
+    SECRET_KEY: str = Field(
+        default_factory=lambda: secrets.token_hex(32),
+        description="Dedicated secret key for session HMAC signing"
+    )
+
+    @field_validator("SECRET_KEY", mode="before")
+    @classmethod
+    def resolve_secret_key(cls, v: Any) -> str:
+        """Ensure a non-empty, cryptographically secure secret key is always present."""
+        if isinstance(v, str) and v.strip() and v.strip() not in ("your_strong_random_secret_key", "your_secret_key_here"):
+            return v.strip()
+        return secrets.token_hex(32)
 
     # Frontend URL for OAuth Redirects (e.g. https://your-domain.vercel.app)
     FRONTEND_URL: str = Field(default="", description="Public frontend URL for OAuth callback redirects")
@@ -116,7 +128,7 @@ class Settings(BaseSettings):
 
     # CORS Configuration
     CORS_ORIGINS: Union[List[str], str] = ["*"]
-    CORS_ALLOW_CREDENTIALS: bool = True
+    CORS_ALLOW_CREDENTIALS: bool = False
     CORS_ALLOW_METHODS: Union[List[str], str] = ["*"]
     CORS_ALLOW_HEADERS: Union[List[str], str] = ["*"]
 

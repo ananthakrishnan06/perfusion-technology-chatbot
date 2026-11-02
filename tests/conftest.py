@@ -83,6 +83,22 @@ def sample_perfusion_pdf_bytes() -> bytes:
 
 
 @pytest.fixture
+def auth_headers() -> dict:
+    """Provide valid authentication headers for protected endpoints."""
+    from api.routes_auth import generate_session_token, ACTIVE_SESSIONS
+    from schemas.auth import UserProfile
+    token = generate_session_token("test_user_sub", "test_user@clinic.edu")
+    ACTIVE_SESSIONS[token] = UserProfile(
+        sub="test_user_sub",
+        email="test_user@clinic.edu",
+        name="Test Clinician",
+        role="student",
+        token=token
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 def sample_scanned_pdf_bytes() -> bytes:
     """Create a scanned-like PDF with minimal or no extractable text."""
     doc = fitz.open()

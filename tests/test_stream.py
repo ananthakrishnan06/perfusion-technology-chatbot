@@ -3,15 +3,15 @@ from unittest.mock import MagicMock
 import pytest
 
 
-def test_chat_stream_endpoint(test_client, sample_perfusion_pdf_bytes, monkeypatch):
+def test_chat_stream_endpoint(test_client, sample_perfusion_pdf_bytes, auth_headers, monkeypatch):
     """Test POST /api/v1/chat/stream returns valid Server-Sent Events (SSE)."""
     # 1. Ingest document
     files = [
         ("files", ("perfusion_stream.pdf", sample_perfusion_pdf_bytes, "application/pdf"))
     ]
-    test_client.post("/api/v1/documents/upload", files=files)
+    test_client.post("/api/v1/documents/upload", files=files, headers=auth_headers)
 
-    # 2. Mock Groq streaming generator
+    # 2. Mock streaming generator
     from api.dependencies import get_container
     container = get_container()
 
@@ -22,8 +22,8 @@ def test_chat_stream_endpoint(test_client, sample_perfusion_pdf_bytes, monkeypat
         yield "Normal ACT should exceed 480 seconds."
 
     monkeypatch.setattr(
-        container.answer_generator.groq_client,
-        "stream_chat_completion",
+        container.answer_generator,
+        "stream_answer",
         mock_stream
     )
 

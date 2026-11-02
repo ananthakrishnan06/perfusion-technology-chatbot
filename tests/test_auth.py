@@ -42,12 +42,45 @@ def test_auth_unauthorized_me():
 
 
 def test_auth_configure_and_login_redirect():
-    """Test POST /api/v1/auth/configure and GET /api/v1/auth/google/login."""
-    orig_id = client.get("/api/v1/auth/config").json()["google_client_id"]
+    """Test POST /api/v1/auth/configure and GET /api/v1/auth/google/login with security checks."""
+    from api.routes_auth import generate_session_token, ACTIVE_SESSIONS
+    from schemas.auth import UserProfile
+
+    # 1. Verify unauthenticated configure is rejected with 401
+    unauth_res = client.post(
+        "/api/v1/auth/configure",
+        json={
+            "supabase_url": "https://mockproject.supabase.co",
+            "supabase_anon_key": "mock_anon_key_123"
+        }
+    )
+    assert unauth_res.status_code == 401
+
+    # 2. Verify non-admin configure is rejected with 403
+    student_token = generate_session_token("student_123", "student@clinic.edu")
+    ACTIVE_SESSIONS[student_token] = UserProfile(
+        sub="student_123", email="student@clinic.edu", name="Student", role="student", token=student_token
+    )
+    forbidden_res = client.post(
+        "/api/v1/auth/configure",
+        headers={"Authorization": f"Bearer {student_token}"},
+        json={
+            "supabase_url": "https://mockproject.supabase.co",
+            "supabase_anon_key": "mock_anon_key_123"
+        }
+    )
+    assert forbidden_res.status_code == 403
+
+    # 3. Verify admin configure succeeds with 200
+    admin_token = generate_session_token("admin_123", "admin@clinic.edu")
+    ACTIVE_SESSIONS[admin_token] = UserProfile(
+        sub="admin_123", email="admin@clinic.edu", name="Admin", role="admin", token=admin_token
+    )
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
     try:
-        # Configure mock credentials
         conf_res = client.post(
             "/api/v1/auth/configure",
+            headers=admin_headers,
             json={
                 "supabase_url": "https://mockproject.supabase.co",
                 "supabase_anon_key": "mock_anon_key_123",
@@ -66,6 +99,11 @@ def test_auth_configure_and_login_redirect():
         assert login_res.status_code in (302, 307)
         assert "accounts.google.com" in login_res.headers["location"]
 
+        # Test open redirect protection on login endpoint
+        evil_login_res = client.get("/api/v1/auth/google/login?return_to=https://evil.com", follow_redirects=False)
+        assert evil_login_res.status_code in (302, 307)
+        assert "evil.com" not in evil_login_res.headers["location"]
+
         # Test callback error handling
         cb_res = client.get("/api/v1/auth/google/callback?error=access_denied", follow_redirects=False)
         assert cb_res.status_code in (302, 307)
@@ -74,6 +112,7 @@ def test_auth_configure_and_login_redirect():
         # Cleanly restore
         client.post(
             "/api/v1/auth/configure",
+            headers=admin_headers,
             json={"supabase_url": "", "supabase_anon_key": "", "google_client_id": "", "google_client_secret": ""}
         )
 
