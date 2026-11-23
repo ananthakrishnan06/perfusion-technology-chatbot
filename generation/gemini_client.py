@@ -28,11 +28,14 @@ class GeminiClientWrapper:
     """
 
     FALLBACK_MODELS = [
-        "gemini-flash-lite-latest",
-        "gemini-3.5-flash-lite",
-        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash",
         "gemini-flash-latest",
-        "gemini-3.8-flash"
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
+        "gemini-2.5-pro",
+        "gemini-pro-latest",
+        "gemini-3.5-flash-lite",
+        "gemini-flash-lite-latest"
     ]
 
     def __init__(
@@ -44,7 +47,7 @@ class GeminiClientWrapper:
         timeout: float = settings.GEMINI_REQUEST_TIMEOUT
     ):
         self.api_key = api_key if api_key is not None else (settings.GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY", ""))
-        self.model = model or "gemini-flash-lite-latest"
+        self.model = model or "gemini-3.5-flash"
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
@@ -225,10 +228,10 @@ class GeminiClientWrapper:
             except Exception as e:
                 last_error = e
                 logger.warning(f"Gemini streaming error with model '{model_name}': {e}.")
-                # If error occurred after yielding tokens, stop to avoid mixed responses
-                if tokens_emitted > 0:
+                if tokens_emitted >= 50:
+                    # Emitted substantial content before disconnect; stop cleanly
                     return
-                # If zero tokens were emitted, try next fallback model
+                # If zero or trivial tokens were emitted, try next fallback model
                 continue
 
         error_msg = f"Gemini streaming failed across models {models_to_try}: {last_error}"

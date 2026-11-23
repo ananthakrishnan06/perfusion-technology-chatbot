@@ -432,8 +432,9 @@ class ChatService:
             yield f"data: {json.dumps({'type': 'error', 'error': str(stream_err)})}\n\n"
             return
 
-        if not full_raw_answer:
-            logger.warning("Streaming yielded 0 tokens. Attempting synchronous completion fallback...")
+        complete_raw_text = "".join(full_raw_answer).strip()
+        if not full_raw_answer or len(complete_raw_text) < 50:
+            logger.warning("Streaming yielded insufficient content. Attempting synchronous completion fallback...")
             try:
                 sync_resp = self.answer_generator.generate_answer(
                     question=request.question,
@@ -442,12 +443,13 @@ class ChatService:
                     exam_config=exam_config
                 )
                 if sync_resp and sync_resp.answer:
-                    full_raw_answer.append(sync_resp.answer)
+                    full_raw_answer = [sync_resp.answer]
                     yield f"data: {json.dumps({'type': 'token', 'content': sync_resp.answer})}\n\n"
             except Exception as sync_err:
                 logger.error(f"Synchronous fallback also failed: {sync_err}")
-                yield f"data: {json.dumps({'type': 'error', 'error': 'Failed to generate clinical answer. Please try again.'})}\n\n"
-                return
+                if not complete_raw_text:
+                    yield f"data: {json.dumps({'type': 'error', 'error': 'Failed to generate clinical answer. Please try again.'})}\n\n"
+                    return
 
         complete_text = "".join(full_raw_answer)
         if not complete_text.strip():

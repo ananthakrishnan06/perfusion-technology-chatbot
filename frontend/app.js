@@ -25,7 +25,7 @@ function getAuthHeaders(extraHeaders = {}) {
 }
 
 function apiFetch(path, options = {}) {
-  return fetch(apiEndpoint(path), { ...options, headers: getAuthHeaders(options.headers), credentials: 'same-origin' });
+  return fetch(apiEndpoint(path), { ...options, headers: getAuthHeaders(options.headers), credentials: 'include' });
 }
 
 let conversationFetchSeq = 0;
@@ -972,63 +972,75 @@ async function sendChatMessage() {
         const decoder = new TextDecoder();
         let buffer = '';
 
+        const parseSseLine = (rawLine) => {
+          const trimmed = rawLine.trim();
+          if (!trimmed.startsWith('data:')) return;
+          try {
+            const eventData = JSON.parse(trimmed.slice(5).trim());
+            if (eventData.type === 'meta') {
+              if (eventData.conversation_id) {
+                state.currentConversationId = eventData.conversation_id;
+                const storageKey = (state.user && state.user.sub) ? `perfusion_current_conv_id_${state.user.sub}` : 'perfusion_current_conv_id';
+                localStorage.setItem(storageKey, eventData.conversation_id);
+              }
+              if (eventData.exam_marks && badgeEl) {
+                badgeEl.className = 'text-[9px] font-mono-code bg-amber-100 text-amber-900 font-semibold px-2 py-0.5 rounded-full border border-amber-300 shadow-xs';
+                badgeEl.textContent = `${eventData.exam_marks} MARKS`;
+              }
+            } else if (eventData.type === 'token') {
+              streamedAnswer += eventData.content;
+              proseDiv.innerHTML = renderMarkdownSafely(streamedAnswer);
+              scrollChatToBottom();
+            } else if (eventData.type === 'error') {
+              const streamErr = new Error(eventData.error || 'Stream error from model');
+              streamErr.isStreamError = true;
+              throw streamErr;
+            } else if (eventData.type === 'done') {
+              streamedAnswer = eventData.answer || streamedAnswer;
+              if (streamedAnswer && streamedAnswer.trim()) {
+                proseDiv.innerHTML = renderMarkdownSafely(streamedAnswer);
+              }
+              if (eventData.citations && Array.isArray(eventData.citations) && eventData.citations.length > 0) {
+                state.currentCitations = eventData.citations;
+                const bubble = assistantMsgEl.querySelector('.bg-white');
+                if (bubble && !bubble.querySelector('[data-citation]')) {
+                  const citContainer = document.createElement('div');
+                  citContainer.innerHTML = renderCitationsHtml(eventData.citations);
+                  bubble.appendChild(citContainer);
+                }
+              }
+              if (window.lucide) lucide.createIcons();
+              scrollChatToBottom();
+              loadConversationsList();
+            }
+          } catch (e) {
+            if (e && e.isStreamError) {
+              throw e;
+            }
+          }
+        };
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop(); // Keep unfinished tail
+          const lines = buffer.split(/\r?\n\r?\n/);
+          buffer = lines.pop() || '';
 
           for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('data:')) continue;
-            try {
-              const eventData = JSON.parse(trimmed.slice(5).trim());
-              if (eventData.type === 'meta') {
-                if (eventData.conversation_id) {
-                  state.currentConversationId = eventData.conversation_id;
-                  const storageKey = (state.user && state.user.sub) ? `perfusion_current_conv_id_${state.user.sub}` : 'perfusion_current_conv_id';
-                  localStorage.setItem(storageKey, eventData.conversation_id);
-                }
-                if (eventData.exam_marks && badgeEl) {
-                  badgeEl.className = 'text-[9px] font-mono-code bg-amber-100 text-amber-900 font-semibold px-2 py-0.5 rounded-full border border-amber-300 shadow-xs';
-                  badgeEl.textContent = `${eventData.exam_marks} MARKS`;
-                }
-              } else if (eventData.type === 'token') {
-                streamedAnswer += eventData.content;
-                proseDiv.innerHTML = renderMarkdownSafely(streamedAnswer);
-                scrollChatToBottom();
-              } else if (eventData.type === 'error') {
-                const streamErr = new Error(eventData.error || 'Stream error from model');
-                streamErr.isStreamError = true;
-                throw streamErr;
-              } else if (eventData.type === 'done') {
-                streamedAnswer = eventData.answer || streamedAnswer;
-                proseDiv.innerHTML = renderMarkdownSafely(streamedAnswer);
-                if (eventData.citations && Array.isArray(eventData.citations) && eventData.citations.length > 0) {
-                  state.currentCitations = eventData.citations;
-                  const bubble = assistantMsgEl.querySelector('.bg-white');
-                  if (bubble) {
-                    const citContainer = document.createElement('div');
-                    citContainer.innerHTML = renderCitationsHtml(eventData.citations);
-                    bubble.appendChild(citContainer);
-                  }
-                }
-                if (window.lucide) lucide.createIcons();
-                scrollChatToBottom();
-                loadConversationsList();
-              }
-            } catch (e) {
-              if (e && e.isStreamError) {
-                throw e;
-              }
-              // Ignore single malformed chunk
-            }
+            parseSseLine(line);
           }
         }
 
-        if (streamedAnswer && streamedAnswer.trim()) {
+        if (buffer && buffer.trim()) {
+          const remainingLines = buffer.split(/\r?\n/);
+          for (const line of remainingLines) {
+            parseSseLine(line);
+          }
+        }
+
+        if (streamedAnswer && streamedAnswer.trim().length >= 10) {
           state.chatHistory.push({ role: 'user', content: query });
           state.chatHistory.push({ role: 'assistant', content: streamedAnswer });
           streamSucceeded = true;
@@ -1088,7 +1100,7 @@ async function sendChatMessage() {
             </div>
           </div>
           <div class="prose-clinical text-xs leading-relaxed text-neutral-800">
-            ${renderMarkdownSafely(data.answer)}
+            ${(data.answer && data.answer.trim()) ? renderMarkdownSafely(data.answer) : '<p class="text-neutral-500 italic">No response text received from the clinical model. Please try asking again.</p>'}
           </div>
           ${(data.citations && data.citations.length) ? renderCitationsHtml(data.citations) : ''}
         </div>
