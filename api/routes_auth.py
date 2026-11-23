@@ -7,12 +7,18 @@ import hashlib
 import hmac
 import json
 import logging
+import re
+import smtplib
+import ssl
+from email.message import EmailMessage
+from itsdangerous import BadData, URLSafeTimedSerializer
 import time
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlencode, urlparse
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response, status
 from fastapi.responses import RedirectResponse
+from starlette.concurrency import run_in_threadpool
 import httpx
 from config import settings
 from schemas.auth import (
@@ -21,7 +27,7 @@ from schemas.auth import (
     UserProfile,
     ConfigureAuthRequest,
     EmailLoginRequest,
-    RegisterRequest,
+    RegisterRequest, RegistrationPending, GoogleCodeExchange,
     PasswordRecoveryRequest,
     SupabaseSessionSyncRequest
 )
@@ -38,8 +44,10 @@ SESSION_SECRET = getattr(settings, "SECRET_KEY", "").strip()
 if not SESSION_SECRET or SESSION_SECRET in ("your_strong_random_secret_key", "perfusion_session_secret_key_8492"):
     SESSION_SECRET = secrets.token_hex(32)
 
-# In-memory session store (token -> UserProfile)
-ACTIVE_SESSIONS = {}
+session_signer = URLSafeTimedSerializer(SESSION_SECRET, salt="session-v2")
+registration_signer = URLSafeTimedSerializer(SESSION_SECRET, salt="email-registration-v1")
+SESSION_MAX_AGE_SECONDS = 7 * 24 * 3600
+
 
 # In-memory cache of revoked token hashes (SHA-256)
 REVOKED_TOKENS_MEM = set()
@@ -280,37 +288,18 @@ def is_safe_redirect_url(url: Optional[str], request: Request) -> bool:
     if not url:
         return False
 
-    # Disallow protocol-relative URLs (e.g. //evil.com) and backslashes (e.g. /\\evil.com)
-    if url.startswith("//") or url.startswith("/\\"):
+    if any(ord(ch) < 33 for ch in url) or "\\" in url or url.startswith("//"):
         return False
-
-    # Safe relative paths (exclude recursive auth loops)
-    if url.startswith("/") and not url.startswith("/api/v1/auth"):
-        return True
-
-    # Absolute URL checks
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
-            return False
-
-        allowed_hosts = set()
-        if request.url.netloc:
-            allowed_hosts.add(request.url.netloc.lower())
-        frontend_url = getattr(settings, "FRONTEND_URL", "").strip()
-        if frontend_url:
-            f_parsed = urlparse(frontend_url)
-            if f_parsed.netloc:
-                allowed_hosts.add(f_parsed.netloc.lower())
-        for orig in getattr(settings, "CORS_ORIGINS", []):
-            if orig != "*":
-                o_parsed = urlparse(orig)
-                if o_parsed.netloc:
-                    allowed_hosts.add(o_parsed.netloc.lower())
-
-        return parsed.netloc.lower() in allowed_hosts
-    except Exception:
+    parsed = urlparse(url)
+    if parsed.fragment or parsed.query:
         return False
+    if url.startswith("/"):
+        return not parsed.path.startswith("/api/")
+    allowed = [str(request.base_url), settings.FRONTEND_URL, *settings.CORS_ORIGINS]
+    return parsed.scheme in {"https", "http"} and any(
+        (parsed.scheme, parsed.netloc) == (origin.scheme, origin.netloc)
+        for origin in map(urlparse, allowed) if origin.netloc
+    )
 
 
 def is_supabase_configured() -> bool:
@@ -356,41 +345,35 @@ async def supabase_request(
         return 503, {"error": f"Supabase connection error: {str(e)}"}
 
 
-def generate_session_token(sub: str, email: str) -> str:
-    """Generate a tamper-proof session token."""
-    payload = f"{sub}:{email}:{int(time.time())}"
-    signature = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return f"{payload}:{signature}"
+def generate_session_token(sub: str, email: str, *, verified: bool = False, name: str = "", role: str = "",
+                           picture=None, given_name=None, family_name=None) -> str:
+    claims = {"sub": sub, "email": email, "verified": verified, "name": name,
+              "picture": picture, "given_name": given_name, "family_name": family_name,
+              "role": display_role(role), "nonce": secrets.token_urlsafe(16)}
+    return "v2." + session_signer.dumps(claims)
 
 
-# Maximum duration for signed local session tokens (7 days)
-SESSION_MAX_AGE_SECONDS = 7 * 24 * 3600
+def display_role(role) -> str:
+    if not isinstance(role, str) or not role.strip() or role.strip().lower() in {"admin", "administrator"}:
+        return "Clinical Perfusionist"
+    return role.strip()
 
 
-def verify_session_token(token: str) -> bool:
-    """Verify validity, expiration, and non-revocation of a session token."""
-    try:
-        if is_token_revoked(token):
-            return False
-        parts = token.split(":")
-        if len(parts) != 4:
-            return False
-        sub, email, timestamp, signature = parts
+def account_role(email, verified, label=None):
+    if verified and email.strip().lower() in settings.ADMIN_EMAILS:
+        return "admin"
+    return display_role(label)
 
-        # Verify token expiration TTL
-        try:
-            ts = int(timestamp)
-            now = int(time.time())
-            if (now - ts) > SESSION_MAX_AGE_SECONDS or ts > (now + 300):
-                return False
-        except (ValueError, TypeError):
-            return False
 
-        payload = f"{sub}:{email}:{timestamp}"
-        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        return hmac.compare_digest(signature, expected)
-    except Exception:
-        return False
+def supabase_profile(user, token):
+    if not token or not user.get("id") or not user.get("email") or not user.get("email_confirmed_at"):
+        raise HTTPException(401, "Please verify your email and sign in.")
+    meta = user.get("user_metadata") or {}
+    role = display_role(meta.get("role"))
+    if (user.get("app_metadata") or {}).get("role") in ("admin", "administrator"):
+        role = "admin"
+    return UserProfile(sub=user["id"], email=user["email"], name=meta.get("name") or meta.get("full_name")
+                       or user["email"].split("@")[0], picture=meta.get("avatar_url"), role=role, token=token)
 
 
 def _persist_user_to_db(profile: UserProfile):
@@ -432,132 +415,78 @@ def _persist_user_to_db(profile: UserProfile):
 
 
 async def resolve_user_from_token(token: str) -> Optional[UserProfile]:
-    """
-    Resolve a UserProfile from a token by checking:
-    1. Active in-memory session cache (if not revoked)
-    2. Supabase Auth API
-    3. Tamper-proof signed local HMAC session tokens
-    """
-    if not token or not token.strip():
+    if not token or len(token) > 16384 or is_token_revoked(token):
         return None
-    token = token.strip()
-
-    # Reject revoked tokens immediately
-    if is_token_revoked(token):
-        ACTIVE_SESSIONS.pop(token, None)
-        return None
-
-    # 1. Check in-memory cache
-    if token in ACTIVE_SESSIONS:
-        return ACTIVE_SESSIONS[token]
-
-    # 2. Check Supabase token validity
-    if is_supabase_configured():
+    if token.startswith("v2."):
         try:
-            status_code, resp_data = await supabase_request("GET", "/user", bearer_token=token)
-            if status_code == 200:
-                sub = resp_data.get("id")
-                email = resp_data.get("email")
-                meta = resp_data.get("user_metadata") or {}
-                name = meta.get("name") or meta.get("full_name") or (email.split("@")[0].replace(".", " ").title() if email else "Clinician")
-                picture = meta.get("avatar_url") or meta.get("picture")
-                role = meta.get("role") or "Clinical Perfusionist"
-
-                profile = UserProfile(
-                    sub=sub,
-                    email=email,
-                    name=name,
-                    picture=picture,
-                    role=role,
-                    authenticated=True,
-                    token=token
-                )
-                ACTIVE_SESSIONS[token] = profile
-                _persist_user_to_db(profile)
-                return profile
-        except Exception as e:
-            logger.debug(f"Supabase token lookup note: {e}")
-
-    # 3. Check local signed session token
-    if verify_session_token(token):
-        try:
-            parts = token.split(":")
-            sub, email, timestamp, signature = parts
-            name = email.split("@")[0].replace(".", " ").title()
-            picture = None
-            role = "Clinical Perfusionist"
-
-            try:
-                from storage.db import is_db_configured, get_session_factory
-                from storage.db_models import User
-
-                if is_db_configured():
-                    factory = get_session_factory()
-                    if factory:
-                        with factory() as db:
-                            u = db.query(User).filter(User.id == sub).first()
-                            if u:
-                                name = u.name
-                                picture = u.picture
-                                role = u.role
-            except Exception:
-                pass
-
-            restored_profile = UserProfile(
-                sub=sub,
-                email=email,
-                name=name,
-                picture=picture,
-                role=role,
-                authenticated=True,
-                token=token
-            )
-            ACTIVE_SESSIONS[token] = restored_profile
-            return restored_profile
-        except Exception:
-            pass
-
+            claims = session_signer.loads(token[3:], max_age=SESSION_MAX_AGE_SECONDS)
+        except BadData:
+            return None
+        email = claims["email"]
+        return UserProfile(sub=claims["sub"], email=email, name=claims["name"] or email.split("@")[0],
+                           picture=claims.get("picture"), given_name=claims.get("given_name"),
+                           family_name=claims.get("family_name"),
+                           role=account_role(email, claims["verified"], claims["role"]), token=token)
+    if is_supabase_configured() and token.count(".") == 2:
+        code, user = await supabase_request("GET", "/user", bearer_token=token)
+        if code == 200:
+            return supabase_profile(user, token)
     return None
 
 
-async def get_current_user(authorization: Optional[str] = Header(None)) -> UserProfile:
-    """
-    FastAPI dependency that enforces verified user authentication.
-    Returns the authenticated UserProfile (with stable UID `sub`).
-    Raises HTTP 401 if token is missing, invalid, or expired.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required. Please sign in to access your chat sessions."
-        )
-
-    token = authorization.replace("Bearer ", "").strip()
-    user = await resolve_user_from_token(token)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session token."
-        )
-    return user
+SESSION_COOKIE = "perfusion_session"
 
 
-async def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Optional[UserProfile]:
-    """
-    FastAPI dependency for endpoints supporting both authenticated users and guest access.
-    Returns UserProfile if valid Bearer token provided, None if no Authorization header is present,
-    or raises HTTP 401 if a token was supplied but is invalid/expired.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
+def browser_session(request):
+    if request.headers.get("X-Perfusion-Session") != "cookie":
+        return False
+    origin = request.headers.get("origin", "").rstrip("/")
+    if origin and request.headers.get("sec-fetch-site") != "same-origin" and origin not in (
+        str(request.base_url).rstrip("/"), settings.FRONTEND_URL.rstrip("/")
+    ):
+        raise HTTPException(403, "Untrusted session origin.")
+    return True
+
+
+def deliver_profile(profile, request, response):
+    response.headers["Cache-Control"] = "no-store"
+    if browser_session(request):
+        response.set_cookie(SESSION_COOKIE, profile.token, httponly=True, secure=request.url.scheme == "https" or request.url.hostname not in {"localhost", "127.0.0.1", "testserver", "::1"},
+                            samesite="lax", max_age=SESSION_MAX_AGE_SECONDS, path="/api/")
+        return profile.model_copy(update={"token": None})
+    return profile
+
+
+def request_token(request, authorization):
+    if authorization:
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(401, "Invalid authorization header.")
+        return authorization[7:].strip()
+    return request.cookies.get(SESSION_COOKIE) if browser_session(request) else None
+
+
+async def get_optional_current_user(request: Request, authorization: Optional[str] = Header(None)) -> Optional[UserProfile]:
+    token = request_token(request, authorization)
+    if not token:
         return None
+    profile = await resolve_user_from_token(token)
+    if not profile:
+        raise HTTPException(401, "Invalid or expired session.")
+    if not authorization:
+        return profile.model_copy(update={"token": None})
+    return profile
 
-    token = authorization.replace("Bearer ", "").strip()
-    user = await resolve_user_from_token(token)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session token."
-        )
+
+async def get_current_user(request: Request, authorization: Optional[str] = Header(None)) -> UserProfile:
+    profile = await get_optional_current_user(request, authorization)
+    if not profile:
+        raise HTTPException(401, "Authentication required.")
+    return profile
+
+
+async def require_admin(user: UserProfile = Depends(get_current_user)) -> UserProfile:
+    if user.role != "admin":
+        raise HTTPException(403, "Administrative privileges required.")
     return user
 
 
@@ -575,6 +504,7 @@ async def get_auth_config():
         supabase_anon_key=supa_key,
         supabase_enabled=supa_enabled,
         google_client_id=client_id,
+        google_redirect_uri=settings.GOOGLE_REDIRECT_URI,
         enabled=supa_enabled or bool(client_id),
         mode="live" if supa_enabled else "setup_required"
     )
@@ -583,27 +513,20 @@ async def get_auth_config():
 @router.post("/configure", response_model=AuthConfigResponse)
 async def configure_auth(
     payload: ConfigureAuthRequest,
-    current_user: UserProfile = Depends(get_current_user)
+    current_user: UserProfile = Depends(require_admin)
 ):
     """
     Dynamically update Supabase / Google OAuth credentials, persist them to .env, and update runtime settings.
     Requires administrative privileges.
     """
-    user_email = (current_user.email or "").strip().lower()
-    user_role = (current_user.role or "").strip().lower()
-    is_admin = user_role in ("admin", "administrator") or user_email in settings.ADMIN_EMAILS
-    if not is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Administrative privileges required to configure authentication credentials."
-        )
-
+    if any(any(char in value for char in "\r\n\x00") for value in payload.model_dump(exclude_none=True).values()):
+        raise HTTPException(400, "Invalid authentication setting.")
     # URL validation for Supabase endpoint
     if payload.supabase_url is not None:
         raw_url = payload.supabase_url.strip()
         if raw_url:
             parsed = urlparse(raw_url)
-            if parsed.scheme not in ("https", "http") or not parsed.netloc:
+            if parsed.scheme != "https" or not parsed.netloc:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid Supabase URL. Must be a valid URL (e.g. https://your-project.supabase.co)."
@@ -664,152 +587,92 @@ async def configure_auth(
         supabase_anon_key=supa_key,
         supabase_enabled=supa_enabled,
         google_client_id=client_id,
+        google_redirect_uri=settings.GOOGLE_REDIRECT_URI,
         enabled=supa_enabled or bool(client_id),
         mode="live" if supa_enabled else "setup_required"
     )
 
 
+def google_redirect_uri(request: Request) -> str:
+    if settings.GOOGLE_REDIRECT_URI:
+        return settings.GOOGLE_REDIRECT_URI
+    if settings.FRONTEND_URL:
+        return settings.FRONTEND_URL.rstrip("/") + OAUTH_COOKIE_PATH
+    return str(request.url_for("google_callback"))
+
+
+oauth_state_signer = URLSafeTimedSerializer(SESSION_SECRET, salt="google-login-state")
+OAUTH_COOKIE = "perfusion_google_state"
+OAUTH_COOKIE_PATH = "/api/v1/auth/google/callback"
+
+
 @router.get("/google/login")
-async def google_login(request: Request, return_to: Optional[str] = None):
-    """
-    Standard OAuth 2.0 authorization redirect to Google Accounts.
-    Passes target frontend return URL through the OAuth state parameter.
-    Validates redirect destination to prevent open redirect vulnerabilities.
-    """
-    client_id = settings.GOOGLE_CLIENT_ID.strip() if settings.GOOGLE_CLIENT_ID else ""
-    if not client_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="GOOGLE_CLIENT_ID is not configured in .env. Please configure your Google Client ID first."
-        )
-
-    base = str(request.base_url).rstrip("/")
-    redirect_uri = f"{base}/api/v1/auth/google/callback"
-
-    # Resolve safe return URL (strictly validate to prevent open redirect to external domains)
-    candidate_target = return_to or request.headers.get("referer") or getattr(settings, "FRONTEND_URL", "").strip() or "/"
-    if is_safe_redirect_url(candidate_target, request):
-        target_frontend = candidate_target
-    else:
-        target_frontend = getattr(settings, "FRONTEND_URL", "").strip() or "/"
-
-    params = {
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
-        "response_type": "code",
-        "scope": "openid email profile",
-        "access_type": "offline",
-        "prompt": "select_account",
-        "state": target_frontend
-    }
-    google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
-    return RedirectResponse(url=google_auth_url)
+async def google_login(request: Request, challenge: str, return_to: Optional[str] = None):
+    if not settings.GOOGLE_CLIENT_ID or not re.fullmatch(r"[A-Za-z0-9_-]{43}", challenge):
+        raise HTTPException(400, "Google sign-in requires a configured client and a valid browser challenge.")
+    target = return_to or settings.FRONTEND_URL or "/app/"
+    if not is_safe_redirect_url(target, request):
+        raise HTTPException(400, "Invalid sign-in destination.")
+    state = secrets.token_urlsafe(32)
+    params = {"client_id": settings.GOOGLE_CLIENT_ID, "redirect_uri": google_redirect_uri(request),
+              "response_type": "code", "scope": "openid email profile", "state": state,
+              "code_challenge": challenge, "code_challenge_method": "S256"}
+    response = RedirectResponse("https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params))
+    response.set_cookie(OAUTH_COOKIE, oauth_state_signer.dumps([state, target]), httponly=True,
+                        secure=request.url.scheme == "https" or request.url.hostname not in {"localhost", "127.0.0.1", "testserver", "::1"}, samesite="lax", max_age=600, path=OAUTH_COOKIE_PATH)
+    return response
 
 
 @router.get("/google/callback")
-async def google_callback(
-    request: Request,
-    code: Optional[str] = None,
-    state: Optional[str] = None,
-    error: Optional[str] = None
-):
-    """
-    OAuth 2.0 callback endpoint handling Google's authorization response.
-    Exchanges code for tokens, extracts profile, and redirects to frontend with token.
-    Strictly validates destination in state to prevent token leakage via open redirect.
-    """
-    # Determine destination frontend URL safely
-    if is_safe_redirect_url(state, request):
-        frontend_base = state.rstrip("/")
-    else:
-        frontend_base = (getattr(settings, "FRONTEND_URL", "").strip() or "/").rstrip("/")
-
-    if not frontend_base:
-        frontend_base = "/"
-    delim = "&" if "?" in frontend_base else "?"
-
-    if error:
-        logger.warning(f"Google OAuth callback returned error: {error}")
-        return RedirectResponse(url=f"{frontend_base}{delim}auth_error={error}")
-
-    if not code:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing authorization code from Google."
-        )
-
-    client_id = settings.GOOGLE_CLIENT_ID.strip() if settings.GOOGLE_CLIENT_ID else ""
-    client_secret = settings.GOOGLE_CLIENT_SECRET.strip() if settings.GOOGLE_CLIENT_SECRET else ""
-
-    base = str(request.base_url).rstrip("/")
-    redirect_uri = f"{base}/api/v1/auth/google/callback"
-
-    token_url = "https://oauth2.googleapis.com/token"
-    token_data = {
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "code": code,
-        "grant_type": "authorization_code",
-        "redirect_uri": redirect_uri
-    }
-
+async def google_callback(request: Request, code: str = "", state: str = "", error: str = ""):
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            token_resp = await client.post(token_url, data=token_data)
+        expected, target = oauth_state_signer.loads(request.cookies.get(OAUTH_COOKIE, ""), max_age=600)
+    except BadData:
+        raise HTTPException(400, "Google sign-in expired. Start again.")
+    if not secrets.compare_digest(state.encode(), expected.encode()) or not is_safe_redirect_url(target, request):
+        raise HTTPException(400, "Invalid sign-in state.")
+    # The browser alone holds the PKCE verifier. Google consumes the code once.
+    result = {"auth_error": "sign_in_failed"} if error or not code else {"google_code": code}
+    response = RedirectResponse(target + "#" + urlencode(result), headers={"Cache-Control": "no-store",
+                                                                          "Referrer-Policy": "no-referrer"})
+    response.delete_cookie(OAUTH_COOKIE, path=OAUTH_COOKIE_PATH)
+    return response
 
-        if token_resp.status_code != 200:
-            err_msg = token_resp.text
-            logger.error(f"Google token exchange failed: {err_msg}")
-            return RedirectResponse(url=f"{frontend_base}{delim}auth_error=token_exchange_failed")
 
-        tokens = token_resp.json()
-        access_token = tokens.get("access_token")
+def google_profile(data: dict) -> UserProfile:
+    if str(data.get("email_verified")).lower() != "true" or not data.get("sub") or not data.get("email"):
+        raise HTTPException(401, "A verified Google email is required.")
+    profile = UserProfile(sub=data["sub"], email=data["email"], name=data.get("name") or data["email"],
+                          picture=data.get("picture"), given_name=data.get("given_name"),
+                          family_name=data.get("family_name"), role=account_role(data["email"], True))
+    profile.token = generate_session_token(profile.sub, profile.email, verified=True, name=profile.name,
+                                           picture=profile.picture, given_name=profile.given_name,
+                                           family_name=profile.family_name)
+    _persist_user_to_db(profile)
+    return profile
 
-        # Fetch user profile using access token
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            userinfo_resp = await client.get(
-                "https://www.googleapis.com/oauth2/v3/userinfo",
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
 
-        if userinfo_resp.status_code != 200:
-            logger.error(f"Failed to fetch Google userinfo: {userinfo_resp.text}")
-            return RedirectResponse(url=f"{frontend_base}{delim}auth_error=userinfo_failed")
-
-        user_info = userinfo_resp.json()
-        sub = user_info.get("sub")
-        email = user_info.get("email")
-        name = user_info.get("name", email.split("@")[0] if email else "Clinical Perfusionist")
-        picture = user_info.get("picture")
-        given_name = user_info.get("given_name")
-        family_name = user_info.get("family_name")
-
-        session_token = generate_session_token(sub, email)
-        profile = UserProfile(
-            sub=sub,
-            email=email,
-            name=name,
-            given_name=given_name,
-            family_name=family_name,
-            picture=picture,
-            role="Clinical Perfusionist",
-            authenticated=True,
-            token=session_token
-        )
-
-        ACTIVE_SESSIONS[session_token] = profile
-        _persist_user_to_db(profile)
-        logger.info(f"Successfully authenticated Google OAuth user: {email} ({name})")
-
-        return RedirectResponse(url=f"{frontend_base}{delim}auth_token={session_token}")
-
-    except Exception as e:
-        logger.error(f"Exception during Google OAuth callback: {e}")
-        return RedirectResponse(url=f"{frontend_base}{delim}auth_error=internal_error")
+@router.post("/google/exchange", response_model=UserProfile)
+async def google_exchange(payload: GoogleCodeExchange, request: Request, response: Response):
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(503, "Google sign-in is unavailable.")
+    async with httpx.AsyncClient(timeout=10) as client:
+        result = await client.post("https://oauth2.googleapis.com/token", data={
+            "client_id": settings.GOOGLE_CLIENT_ID, "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "redirect_uri": google_redirect_uri(request), "code": payload.code,
+            "code_verifier": payload.verifier, "grant_type": "authorization_code",
+        })
+        if result.status_code != 200 or not result.json().get("access_token"):
+            raise HTTPException(401, "Google sign-in expired or was invalid.")
+        user = await client.get("https://www.googleapis.com/oauth2/v3/userinfo",
+                                headers={"Authorization": "Bearer " + result.json()["access_token"]})
+        if user.status_code != 200:
+            raise HTTPException(401, "Google identity verification failed.")
+    return deliver_profile(google_profile(user.json()), request, response)
 
 
 @router.post("/google", response_model=UserProfile)
-async def authenticate_google(payload: GoogleAuthRequest):
+async def authenticate_google(payload: GoogleAuthRequest, request: Request, response: Response):
     """
     Verifies a Google ID Token (JWT) sent from the frontend Google Sign-In button.
     Calls Google's official tokeninfo endpoint to validate signature, audience, and claims.
@@ -821,65 +684,16 @@ async def authenticate_google(payload: GoogleAuthRequest):
             detail="Missing Google authentication credential."
         )
 
-    # Live Verification with Google Identity Services API
-    google_tokeninfo_url = f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}"
-
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(400, "Google sign-in is unavailable.")
+    from google.auth.transport.requests import Request as GoogleRequest
+    from google.oauth2.id_token import verify_oauth2_token
+    from google.auth.exceptions import GoogleAuthError
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(google_tokeninfo_url)
-
-        if resp.status_code != 200:
-            error_detail = resp.json().get("error_description", "Invalid Google ID Token.")
-            logger.warning(f"Google token verification failed: {error_detail}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Google authentication failed: {error_detail}"
-            )
-
-        token_data = resp.json()
-
-        # Validate Audience if configured
-        configured_client_id = settings.GOOGLE_CLIENT_ID.strip() if settings.GOOGLE_CLIENT_ID else None
-        if configured_client_id and token_data.get("aud") != configured_client_id:
-            logger.warning(
-                f"Token audience mismatch: aud={token_data.get('aud')} vs configured={configured_client_id}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Google token was issued for a different client ID."
-            )
-
-        sub = token_data.get("sub")
-        email = token_data.get("email")
-        name = token_data.get("name", email.split("@")[0] if email else "Perfusion User")
-        picture = token_data.get("picture")
-        given_name = token_data.get("given_name")
-        family_name = token_data.get("family_name")
-
-        session_token = generate_session_token(sub, email)
-        profile = UserProfile(
-            sub=sub,
-            email=email,
-            name=name,
-            given_name=given_name,
-            family_name=family_name,
-            picture=picture,
-            role="Clinical Perfusionist",
-            authenticated=True,
-            token=session_token
-        )
-
-        ACTIVE_SESSIONS[session_token] = profile
-        _persist_user_to_db(profile)
-        logger.info(f"Successfully authenticated Google user: {email} ({name})")
-        return profile
-
-    except httpx.RequestError as e:
-        logger.error(f"Network error contacting Google tokeninfo endpoint: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to contact Google OAuth service to verify identity."
-        )
+        data = await run_in_threadpool(verify_oauth2_token, credential, GoogleRequest(), settings.GOOGLE_CLIENT_ID)
+    except (ValueError, GoogleAuthError):
+        raise HTTPException(401, "Google identity verification failed.")
+    return deliver_profile(google_profile(data), request, response)
 
 
 @router.get("/me", response_model=UserProfile)
@@ -892,25 +706,20 @@ async def me_endpoint(current_user: UserProfile = Depends(get_current_user)):
 
 
 @router.post("/logout")
-async def logout(authorization: Optional[str] = Header(None)):
-    """
-    Log out and invalidate current session in cache, database, and Supabase.
-    """
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.replace("Bearer ", "").strip()
-        ACTIVE_SESSIONS.pop(token, None)
+async def logout(request: Request, response: Response, authorization: Optional[str] = Header(None)):
+    token = request_token(request, authorization)
+    if token and await resolve_user_from_token(token):
         revoke_token(token)
-        if is_supabase_configured():
-            try:
-                await supabase_request("POST", "/logout", bearer_token=token)
-            except Exception as e:
-                logger.debug(f"Supabase logout call: {e}")
-
-    return {"status": "success", "message": "Logged out successfully."}
+        if is_supabase_configured() and not token.startswith("v2."):
+            await supabase_request("POST", "/logout", bearer_token=token)
+    if browser_session(request):
+        response.delete_cookie(SESSION_COOKIE, path="/api/")
+    response.headers["Cache-Control"] = "no-store"
+    return {"status": "success"}
 
 
 @router.post("/session", response_model=UserProfile)
-async def sync_supabase_session(payload: SupabaseSessionSyncRequest):
+async def sync_supabase_session(payload: SupabaseSessionSyncRequest, request: Request, response: Response):
     """
     Sync frontend Supabase session to backend, verifying the JWT with Supabase Auth API.
     """
@@ -929,25 +738,11 @@ async def sync_supabase_session(payload: SupabaseSessionSyncRequest):
                 detail="Invalid or expired Supabase token."
             )
 
-        sub = resp_data.get("id")
-        email = resp_data.get("email")
-        meta = resp_data.get("user_metadata") or {}
-        name = meta.get("name") or meta.get("full_name") or (email.split("@")[0].replace(".", " ").title() if email else "Clinician")
-        picture = meta.get("avatar_url") or meta.get("picture")
-        role = meta.get("role") or "Clinical Perfusionist"
-
-        profile = UserProfile(
-            sub=sub,
-            email=email,
-            name=name,
-            picture=picture,
-            role=role,
-            authenticated=True,
-            token=token
-        )
-        ACTIVE_SESSIONS[token] = profile
+        if is_token_revoked(token):
+            raise HTTPException(401, "Invalid session.")
+        profile = supabase_profile(resp_data, token)
         _persist_user_to_db(profile)
-        return profile
+        return deliver_profile(profile, request, response)
 
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -988,7 +783,7 @@ async def recover_password(payload: PasswordRecoveryRequest):
 
 
 @router.post("/login", response_model=UserProfile)
-async def login_with_email(payload: EmailLoginRequest, request: Request):
+async def login_with_email(payload: EmailLoginRequest, request: Request, response: Response):
     """
     Institutional Email and Password login.
     Uses Supabase Auth when configured, or local verified database accounts.
@@ -1023,25 +818,10 @@ async def login_with_email(payload: EmailLoginRequest, request: Request):
 
         user_info = resp_data.get("user") or {}
         access_token = resp_data.get("access_token")
-        sub = user_info.get("id") or f"supa_{hashlib.md5(email.encode()).hexdigest()[:16]}"
-        meta = user_info.get("user_metadata") or {}
-        name = meta.get("name") or meta.get("full_name") or email.split("@")[0].replace(".", " ").title()
-        picture = meta.get("avatar_url") or meta.get("picture")
-        role = meta.get("role") or "Clinical Perfusionist"
-
-        profile = UserProfile(
-            sub=sub,
-            email=email,
-            name=name,
-            picture=picture,
-            role=role,
-            authenticated=True,
-            token=access_token
-        )
-        ACTIVE_SESSIONS[access_token] = profile
+        profile = supabase_profile(user_info, access_token)
         _persist_user_to_db(profile)
-        logger.info(f"User authenticated via Supabase: {email} ({name})")
-        return profile
+        logger.info(f"User authenticated via Supabase: {email} ({profile.name})")
+        return deliver_profile(profile, request, response)
 
     # 2. Local Database Authentication (when Supabase is pending setup)
     from storage.db import is_db_configured, get_session_factory
@@ -1051,6 +831,7 @@ async def login_with_email(payload: EmailLoginRequest, request: Request):
     user_name = None
     user_picture = None
     user_role = None
+    email_verified = False
     authenticated = False
 
     if is_db_configured():
@@ -1062,6 +843,7 @@ async def login_with_email(payload: EmailLoginRequest, request: Request):
                     if user_match and user_match.password_hash:
                         if verify_password(password, user_match.password_hash):
                             authenticated = True
+                            email_verified = user_match.email_verified
                             user_id = user_match.id
                             user_name = user_match.name
                             user_picture = user_match.picture
@@ -1095,139 +877,93 @@ async def login_with_email(payload: EmailLoginRequest, request: Request):
     picture = user_picture
     role = user_role or "Clinical Perfusionist"
 
-    session_token = generate_session_token(sub, email)
+    session_token = generate_session_token(sub, email, verified=email_verified, name=name, role=role, picture=picture)
     profile = UserProfile(
         sub=sub,
         email=email,
         name=name,
         picture=picture,
-        role=role,
+        role=account_role(email, email_verified, role),
         authenticated=True,
         token=session_token
     )
-    ACTIVE_SESSIONS[session_token] = profile
     _persist_user_to_db(profile)
     logger.info(f"User signed in: {email} ({name})")
-    return profile
+    return deliver_profile(profile, request, response)
 
 
-@router.post("/register", response_model=UserProfile)
-async def register_account(payload: RegisterRequest, request: Request):
-    """
-    Register a new clinical / student institutional account.
-    Registers via Supabase Auth when configured, and syncs to PostgreSQL database.
-    Rate limited to prevent mass-registration abuse.
-    """
-    client_ip = request.client.host if request.client else "unknown"
-    check_register_rate_limit(client_ip)
+def send_registration_code(email: str, code: str):
+    message = EmailMessage()
+    message["From"] = settings.SMTP_FROM
+    message["To"] = email
+    message["Subject"] = "Verify your PerfusionGPT email"
+    message.set_content(f"Enter this code in the registration form within 10 minutes: {code}")
+    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
+        smtp.starttls(context=ssl.create_default_context())
+        if settings.SMTP_USERNAME:
+            smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+        smtp.send_message(message)
 
+
+def registration_proof(payload, code):
+    # Bind proof to this mailbox and password without exposing a password hash in the challenge.
+    values = [payload.email.strip().lower(), payload.password.strip(), code]
+    return hmac.new(SESSION_SECRET.encode(), json.dumps(values).encode(), hashlib.sha256).hexdigest()
+
+
+@router.post("/register", response_model=UserProfile | RegistrationPending)
+async def register_account(payload: RegisterRequest, request: Request, response: Response):
+    check_register_rate_limit(request.client.host if request.client else "unknown")
     email = payload.email.strip().lower()
     name = payload.name.strip()
     password = payload.password.strip()
-
-    # Prevent unauthorized privilege escalation to admin via registration
-    requested_role = payload.role.strip() if payload.role else "Clinical Perfusionist"
-    if requested_role.lower() in ("admin", "administrator"):
-        if email not in settings.ADMIN_EMAILS:
-            role = "Clinical Perfusionist"
-        else:
-            role = requested_role
-    else:
-        role = requested_role
-
-    if not email or "@" not in email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A valid institutional email is required."
-        )
-    if len(password) < 4:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 4 characters long."
-        )
-
-    # 1. Supabase Registration
+    role = display_role(payload.role)
+    if not re.fullmatch(r"[^@\s,;<>]+@[^@\s,;<>]+", email) or len(email) > 254:
+        raise HTTPException(400, "A valid email address is required.")
+    if len(password) < 8:
+        raise HTTPException(400, "Use at least eight characters for your password.")
+    pending_message = "Check your email to verify your account."
     if is_supabase_configured():
-        status_code, resp_data = await supabase_request(
-            "POST",
-            "/signup",
-            json_data={
-                "email": email,
-                "password": password,
-                "data": {"name": name, "role": role}
-            }
-        )
-        if status_code not in (200, 201):
-            err_msg = resp_data.get("msg") or resp_data.get("message") or resp_data.get("error_description") or "Registration failed in Supabase."
-            logger.warning(f"Supabase registration error for {email}: {err_msg}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Supabase registration error: {err_msg}"
-            )
-
-        user_info = resp_data.get("user") or resp_data
-        sub = user_info.get("id") or f"supa_{hashlib.md5(email.encode()).hexdigest()[:16]}"
-        access_token = resp_data.get("access_token") or generate_session_token(sub, email)
-
-        profile = UserProfile(
-            sub=sub,
-            email=email,
-            name=name,
-            role=role,
-            authenticated=True,
-            token=access_token
-        )
-        ACTIVE_SESSIONS[access_token] = profile
+        code, data = await supabase_request("POST", "/signup", json_data={
+            "email": email, "password": password, "data": {"name": name, "role": role}
+        })
+        if code not in (200, 201):
+            raise HTTPException(400, "Registration could not be completed.")
+        if not data.get("access_token") or not (data.get("user") or {}).get("email_confirmed_at"):
+            return RegistrationPending(message=pending_message)
+        profile = supabase_profile(data["user"], data["access_token"])
         _persist_user_to_db(profile)
-        logger.info(f"Clinician account registered with Supabase: {email} ({name})")
-        return profile
+        return deliver_profile(profile, request, response)
 
-    # 2. Local Database Registration
-    import uuid
-    from storage.db import is_db_configured, get_session_factory
+    from storage.db import get_session_factory
     from storage.db_models import User
-
-    sub = f"usr_{uuid.uuid4().hex[:16]}"
-    pwd_hash = hash_password(password)
-
-    if is_db_configured():
-        factory = get_session_factory()
-        if factory:
-            try:
-                with factory() as db:
-                    existing = db.query(User).filter(User.email == email).first()
-                    if existing:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="An account already exists with this institutional email. Please sign in."
-                        )
-                    new_user = User(
-                        id=sub,
-                        email=email,
-                        name=name,
-                        password_hash=pwd_hash,
-                        role=role,
-                        last_login_at=datetime.now(timezone.utc)
-                    )
-                    db.add(new_user)
-                    db.commit()
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.warning(f"Error persisting new user in register: {e}")
-
-    session_token = generate_session_token(sub, email)
-    profile = UserProfile(
-        sub=sub,
-        email=email,
-        name=name,
-        role=role,
-        authenticated=True,
-        token=session_token
-    )
-    ACTIVE_SESSIONS[session_token] = profile
-    logger.info(f"New clinician account registered: {email} ({name})")
-    return profile
-
-
-
+    from sqlalchemy.exc import IntegrityError
+    import uuid
+    factory = get_session_factory()
+    if not factory or not settings.SMTP_HOST or not settings.SMTP_FROM:
+        raise HTTPException(503, "Email registration is unavailable. Contact your administrator.")
+    if not payload.challenge:
+        code = secrets.token_hex(8)
+        challenge = registration_signer.dumps(registration_proof(payload, code))
+        try:
+            await run_in_threadpool(send_registration_code, email, code)
+        except (OSError, smtplib.SMTPException, ValueError):
+            raise HTTPException(503, "Verification email could not be delivered.")
+        return RegistrationPending(message=pending_message, challenge=challenge)
+    try:
+        expected = registration_signer.loads(payload.challenge, max_age=600)
+    except BadData:
+        raise HTTPException(400, "Verification expired. Start registration again.")
+    if not secrets.compare_digest(expected, registration_proof(payload, payload.verification_code or "")):
+        raise HTTPException(400, "Incorrect verification code.")
+    user_id = "usr_" + uuid.uuid4().hex
+    with factory() as db:
+        db.add(User(id=user_id, email=email, email_verified=True, name=name, role=role,
+                    password_hash=hash_password(password), last_login_at=datetime.now(timezone.utc)))
+        try:
+            db.commit()
+        except IntegrityError:
+            raise HTTPException(409, "Account already registered. Please sign in.")
+    token = generate_session_token(user_id, email, verified=True, name=name, role=role)
+    profile = UserProfile(sub=user_id, email=email, name=name, role=account_role(email, True, role), token=token)
+    return deliver_profile(profile, request, response)

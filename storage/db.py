@@ -28,6 +28,7 @@ def get_engine():
         _engine = create_engine(
             db_url,
             echo=settings.DATABASE_ECHO,
+            hide_parameters=True,
             pool_pre_ping=True,
             pool_recycle=300,
             pool_size=10,
@@ -38,7 +39,7 @@ def get_engine():
         logger.info("Successfully initialized PostgreSQL database engine.")
         return _engine
     except Exception as e:
-        logger.error(f"Failed to initialize PostgreSQL engine with URL '{db_url}': {e}")
+        logger.error("Database initialization failed (%s)", type(e).__name__)
         return None
 
 
@@ -56,6 +57,10 @@ def init_db() -> bool:
         # Run lightweight migrations for schema updates
         from sqlalchemy import text, inspect
         with engine.connect() as conn:
+            if "email_verified" not in {col["name"] for col in inspect(engine).get_columns("users")}:
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE NOT NULL"))
+                conn.commit()
+
             # 1. users.password_hash
             try:
                 conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);"))
@@ -103,7 +108,7 @@ def init_db() -> bool:
         logger.info("PostgreSQL tables and schema migrations verified successfully.")
         return True
     except Exception as e:
-        logger.error(f"Failed to create PostgreSQL tables: {e}")
+        logger.error("Database initialization failed (%s)", type(e).__name__)
         return False
 
 

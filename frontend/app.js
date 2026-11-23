@@ -1,10 +1,7 @@
 // Perfusion AI - Client Application Controller
 // Cardiovascular Decision Support & Knowledge Workspace
 
-const initialUser = JSON.parse(localStorage.getItem('perfusion_user') || 'null');
-const initialConvId = (initialUser && initialUser.sub)
-  ? (localStorage.getItem(`perfusion_current_conv_id_${initialUser.sub}`) || null)
-  : (localStorage.getItem('perfusion_current_conv_id') || null);
+localStorage.removeItem('perfusion_user'); // Remove tokens saved by earlier releases.
 
 const state = {
   activeView: 'home',
@@ -18,17 +15,17 @@ const state = {
   isQuerying: false,
   activeDocId: null,
   activeDocName: null,
-  currentConversationId: initialConvId,
-  user: initialUser,
+  currentConversationId: null,
+  user: null,
   authConfig: { google_client_id: '', enabled: false, mode: 'setup_required' },
 };
 
 function getAuthHeaders(extraHeaders = {}) {
-  const headers = { ...extraHeaders };
-  if (state.user && state.user.token) {
-    headers['Authorization'] = `Bearer ${state.user.token}`;
-  }
-  return headers;
+  return { ...extraHeaders, 'X-Perfusion-Session': 'cookie' };
+}
+
+function apiFetch(path, options = {}) {
+  return fetch(apiEndpoint(path), { ...options, headers: getAuthHeaders(options.headers), credentials: 'same-origin' });
 }
 
 let conversationFetchSeq = 0;
@@ -99,7 +96,6 @@ function setAuthenticatedUser(newUser) {
   const isDifferentUser = previousSub && previousSub !== newUser.sub;
 
   state.user = newUser;
-  localStorage.setItem('perfusion_user', JSON.stringify(newUser));
 
   if (isDifferentUser) {
     // Clear in-memory & DOM state from previous account
@@ -139,7 +135,6 @@ function clearAuthenticatedUser() {
 // Dynamic API Endpoint Resolver (supports Vercel proxy rewrite & direct Azure App Service routing)
 function apiEndpoint(path) {
   const base = (window.PERFUSION_CONFIG && window.PERFUSION_CONFIG.API_BASE_URL)
-    || localStorage.getItem('perfusion_api_base_url')
     || '';
   if (!path.startsWith('/')) path = '/' + path;
   if (!base) return path;
@@ -172,52 +167,13 @@ function extractErrorMessage(errData, fallbackMsg = 'Request could not be comple
 // ==========================================
 // 1. INITIALIZATION & HEALTH CHECK
 // ==========================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   if (window.lucide) {
     lucide.createIcons();
   }
 
-  // Handle Google OAuth 2.0 redirect parameters (?auth_token=... or ?auth_error=...)
   const urlParams = new URLSearchParams(window.location.search);
-  const authToken = urlParams.get('auth_token');
-  const authError = urlParams.get('auth_error');
-
-  if (authToken) {
-    showLoginLoading(
-      "Signing in with Google...",
-      "Validating your Google credentials and restoring your clinical sessions...",
-      "Authenticating session..."
-    );
-
-    fetch(apiEndpoint('/api/v1/auth/me'), {
-      headers: { 'Authorization': `Bearer ${authToken}` }
-    })
-    .then(r => {
-      if (!r.ok) throw new Error("Authentication failed");
-      return r.json();
-    })
-    .then(user => {
-      if (user && user.authenticated) {
-        setAuthenticatedUser(user);
-        showAuthNotification(`Signed in with Google as ${user.name}`);
-      }
-    })
-    .catch(err => {
-      console.error(err);
-      showToastNotification("Google sign-in could not be completed. Please try again.", "error");
-    })
-    .finally(() => {
-      hideLoginLoading();
-    });
-
-    window.history.replaceState({}, document.title, window.location.pathname);
-  } else if (authError) {
-    hideLoginLoading();
-    showToastNotification(`Google sign-in error: ${authError}`, 'error');
-    window.history.replaceState({}, document.title, window.location.pathname);
-  }
-
-  initAuth();
+  const authReady = finishGoogleRedirect().then(initAuth);
   checkHealth();
   setupKeyboardShortcuts();
   calculateBSA();
@@ -232,6 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  await authReady;
   // Control initial view based on auth session
   if (state.user && state.user.authenticated) {
     bypassLoginToGuest();
@@ -339,7 +296,7 @@ function hideBackendLoading(connectedMsg = "Backend connected and ready!") {
 async function refreshBackendData() {
   // Query document counts
   try {
-    const docRes = await fetch(apiEndpoint('/api/v1/documents'), {
+    const docRes = await apiFetch('/api/v1/documents', {
       headers: getAuthHeaders()
     });
     if (docRes.ok) {
@@ -385,7 +342,7 @@ async function checkHealth() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);
 
-    const res = await fetch(apiEndpoint('/health'), { signal: controller.signal });
+    const res = await apiFetch('/health', { signal: controller.signal });
     clearTimeout(timeoutId);
     clearTimeout(slowTimer);
 
@@ -408,7 +365,7 @@ async function checkHealth() {
     if (!backendHealthPollingTimer) {
       backendHealthPollingTimer = setInterval(async () => {
         try {
-          const res = await fetch(apiEndpoint('/health'));
+          const res = await apiFetch('/health');
           if (res.ok) {
             clearInterval(backendHealthPollingTimer);
             backendHealthPollingTimer = null;
@@ -688,9 +645,13 @@ function renderMarkdownSafely(text) {
   }
 
   if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
-    return DOMPurify.sanitize(rawHtml);
+    return DOMPurify.sanitize(rawHtml, {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'sup', 'sub', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'a'],
+      ALLOWED_ATTR: ['href', 'title'], ALLOW_DATA_ATTR: false
+    });
   }
-  return rawHtml;
+  return escapeHtml(text).replace(/\n/g, '<br>');
 }
 window.renderMarkdownSafely = renderMarkdownSafely;
 
@@ -821,7 +782,7 @@ function startVoiceInput() {
           try {
             const formData = new FormData();
             formData.append('file', audioBlob, 'voice.webm');
-            const resp = await fetch(apiEndpoint('/api/v1/chat/transcribe'), {
+            const resp = await apiFetch('/api/v1/chat/transcribe', {
               method: 'POST',
               body: formData
             });
@@ -986,13 +947,10 @@ async function sendChatMessage() {
     `;
 
     const authHeaders = { 'Content-Type': 'application/json' };
-    if (state.user && state.user.token) {
-      authHeaders['Authorization'] = `Bearer ${state.user.token}`;
-    }
 
     // Try streaming endpoint first for instant response
     try {
-      const streamRes = await fetch(apiEndpoint('/api/v1/chat/stream'), {
+      const streamRes = await apiFetch('/api/v1/chat/stream', {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify(payload)
@@ -1087,7 +1045,7 @@ async function sendChatMessage() {
         chatMessages.appendChild(typingIndicator);
       }
       // Fallback to standard non-streaming /ask endpoint
-      const response = await fetch(apiEndpoint('/api/v1/chat/ask'), {
+      const response = await apiFetch('/api/v1/chat/ask', {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify(payload)
@@ -1244,11 +1202,11 @@ function renderCitationsHtml(citations) {
     const pageText = c.page ? `P.${c.page}` : '';
     const src = (c.source || 'Curriculum Reference').replace(/\.pdf$/i, '');
     const shortSrc = src.length > 24 ? src.slice(0, 22) + '…' : src;
-    const jsonStr = JSON.stringify(c).replace(/"/g, '&quot;');
+    const citationData = escapeHtml(JSON.stringify(c));
     return `
       <button 
         type="button"
-        onclick="showDirectCitation(${jsonStr})" 
+        data-citation="${citationData}"
         class="inline-flex items-center space-x-1.5 bg-neutral-50 hover:bg-neutral-100 active:scale-95 border border-subtleborder rounded-md px-2 py-1 text-[10px] text-neutral-700 font-mono-code transition cursor-pointer shadow-2xs"
         title="Inspect ${escapeHtml(c.source || '')} page ${c.page || 1}"
       >
@@ -1271,6 +1229,10 @@ function renderCitationsHtml(citations) {
     </div>
   `;
 }
+document.addEventListener('click', event => {
+  const button = event.target.closest?.('button[data-citation]');
+  if (button) showDirectCitation(JSON.parse(button.dataset.citation));
+});
 window.renderCitationsHtml = renderCitationsHtml;
 
 function openCitationDrawer(index) {
@@ -1327,13 +1289,13 @@ async function generateMCQs() {
   container.innerHTML = `
     <div class="bg-white border border-subtleborder rounded-xl p-8 text-center space-y-3 shadow-sm">
       <div class="inline-block animate-spin w-7 h-7 border-2 border-darktext border-t-transparent rounded-full"></div>
-      <p class="text-sm font-medium text-neutral-800">Synthesizing ${num_questions} evidence-based MCQs on "${topic}"...</p>
+      <p class="text-sm font-medium text-neutral-800">Synthesizing ${num_questions} evidence-based MCQs on "${escapeHtml(topic)}"...</p>
       <p class="text-xs text-neutral-400 font-mono-code">Grounding questions in indexed textbook chapters</p>
     </div>
   `;
 
   try {
-    const res = await fetch(apiEndpoint('/api/v1/study/mcq'), {
+    const res = await apiFetch('/api/v1/study/mcq', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, num_questions })
@@ -1349,7 +1311,7 @@ async function generateMCQs() {
       container.innerHTML = `
         <div class="bg-amber-50 border border-amber-200 text-amber-900 p-5 rounded-xl text-xs">
           <p class="font-semibold">Insufficient Evidence Found</p>
-          <p class="mt-1">The knowledge base did not contain enough specific material on "${topic}" to construct reliable questions.</p>
+          <p class="mt-1">The knowledge base did not contain enough specific material on "${escapeHtml(topic)}" to construct reliable questions.</p>
         </div>
       `;
       return;
@@ -1365,12 +1327,11 @@ async function generateMCQs() {
       q.options.forEach(opt => {
         optionsHtml += `
           <button 
-            onclick="checkAnswer(this, '${opt.key}', '${q.correct_answer}', 'explanation-${qIndex}')"
             class="mcq-option w-full text-left p-3.5 rounded-lg border border-subtleborder hover:border-neutral-400 bg-neutral-50/50 hover:bg-neutral-100/50 transition flex items-start space-x-3 text-xs"
-            data-key="${opt.key}"
+            data-key="${escapeHtml(opt.key)}"
           >
-            <span class="font-mono-code font-bold w-5 h-5 rounded flex items-center justify-center bg-white border border-neutral-300 text-neutral-700 text-[11px] flex-shrink-0">${opt.key}</span>
-            <span class="text-neutral-800 leading-snug pt-0.5">${opt.text}</span>
+            <span class="font-mono-code font-bold w-5 h-5 rounded flex items-center justify-center bg-white border border-neutral-300 text-neutral-700 text-[11px] flex-shrink-0">${escapeHtml(opt.key)}</span>
+            <span class="text-neutral-800 leading-snug pt-0.5">${escapeHtml(opt.text)}</span>
           </button>
         `;
       });
@@ -1381,7 +1342,7 @@ async function generateMCQs() {
           <span class="text-[10px] font-mono-code bg-sandbadge text-neutral-800 px-2 py-0.5 rounded font-semibold">BOARD PREP</span>
         </div>
         
-        <p class="text-sm font-semibold text-neutral-900 leading-relaxed">${q.question}</p>
+        <p class="text-sm font-semibold text-neutral-900 leading-relaxed">${escapeHtml(q.question)}</p>
         
         <div class="space-y-2">
           ${optionsHtml}
@@ -1390,12 +1351,15 @@ async function generateMCQs() {
         <div id="explanation-${qIndex}" class="hidden pt-3 border-t border-subtleborder text-xs space-y-2">
           <div class="flex items-center space-x-1.5 font-semibold text-emerald-800">
             <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i>
-            <span>Correct Answer: Option ${q.correct_answer}</span>
+            <span>Correct Answer: Option ${escapeHtml(q.correct_answer)}</span>
           </div>
-          <p class="text-neutral-700 leading-relaxed bg-[#FBF9F5] p-3 rounded-lg border border-subtleborder">${q.explanation}</p>
+          <p class="text-neutral-700 leading-relaxed bg-[#FBF9F5] p-3 rounded-lg border border-subtleborder">${escapeHtml(q.explanation)}</p>
         </div>
       `;
 
+      card.querySelectorAll('.mcq-option').forEach(button => {
+        button.addEventListener('click', () => checkAnswer(button, button.dataset.key, q.correct_answer, 'explanation-' + qIndex));
+      });
       container.appendChild(card);
     });
 
@@ -1405,7 +1369,7 @@ async function generateMCQs() {
     container.innerHTML = `
       <div class="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl text-xs">
         <p class="font-semibold">Failed to generate MCQs</p>
-        <p class="font-mono-code mt-1">${err.message}</p>
+        <p class="font-mono-code mt-1">${escapeHtml(err.message)}</p>
       </div>
     `;
   }
@@ -1454,7 +1418,7 @@ async function loadDocuments() {
   `;
 
   try {
-    const res = await fetch(apiEndpoint('/api/v1/documents'), {
+    const res = await apiFetch('/api/v1/documents', {
       headers: getAuthHeaders()
     });
     if (!res.ok) throw new Error('Failed to fetch documents');
@@ -1479,7 +1443,7 @@ async function loadDocuments() {
       tr.innerHTML = `
         <td class="py-3 px-4 font-medium text-neutral-900 flex items-center space-x-2">
           <i data-lucide="file-text" class="w-4 h-4 text-amber-700 flex-shrink-0"></i>
-          <span class="truncate max-w-sm" title="${doc.filename}">${doc.filename}</span>
+          <span class="truncate max-w-sm" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
         </td>
         <td class="py-3 px-4 font-mono-code text-neutral-600">${doc.total_pages || '—'} pages</td>
         <td class="py-3 px-4">
@@ -1489,11 +1453,13 @@ async function loadDocuments() {
           </span>
         </td>
         <td class="py-3 px-4 text-right">
-          <button onclick="setQueryAndExecute('Summarize key principles in ' + escapeHtml('${doc.filename}'), '${doc.document_id}', escapeHtml('${doc.filename}'))" class="text-xs font-mono-code text-amber-800 hover:text-amber-900 font-semibold underline underline-offset-2">
+          <button type="button" class="text-xs font-mono-code text-amber-800 hover:text-amber-900 font-semibold underline underline-offset-2">
             Explore
           </button>
         </td>
       `;
+      tr.querySelector('button').addEventListener('click', () =>
+        setQueryAndExecute('Summarize key principles in ' + doc.filename, doc.document_id, doc.filename));
       tbody.appendChild(tr);
     });
 
@@ -1503,7 +1469,7 @@ async function loadDocuments() {
     tbody.innerHTML = `
       <tr>
         <td colspan="5" class="py-6 text-center text-rose-600">
-          Failed to load documents: ${err.message}
+          Failed to load documents: ${escapeHtml(err.message)}
         </td>
       </tr>
     `;
@@ -1569,25 +1535,11 @@ async function initAuth() {
   renderAuthUI();
   await fetchAuthConfig();
 
-  // Validate or refresh session from backend if token exists
-  if (state.user && state.user.token) {
-    try {
-      const meRes = await fetch(apiEndpoint('/api/v1/auth/me'), {
-        headers: { 'Authorization': `Bearer ${state.user.token}` }
-      });
-      if (meRes.ok) {
-        state.user = await meRes.json();
-        localStorage.setItem('perfusion_user', JSON.stringify(state.user));
-        renderAuthUI();
-      } else if (meRes.status === 401) {
-        // Token expired or invalid
-        localStorage.removeItem('perfusion_user');
-        state.user = null;
-        renderAuthUI();
-      }
-    } catch (e) {
-      console.debug('Session check note', e);
-    }
+  try {
+    const me = await apiFetch('/api/v1/auth/me');
+    if (me.ok) setAuthenticatedUser(await me.json());
+  } catch (error) {
+    console.debug('Session unavailable', error);
   }
 
   // Close user dropdown when clicking outside
@@ -1604,7 +1556,7 @@ async function initAuth() {
 
 async function fetchAuthConfig() {
   try {
-    const res = await fetch(apiEndpoint('/api/v1/auth/config'));
+    const res = await apiFetch('/api/v1/auth/config');
     if (res.ok) {
       state.authConfig = await res.json();
       updateAuthModalConfigUI(false);
@@ -1662,11 +1614,22 @@ function initSupabaseClient() {
   if (!state.authConfig || !state.authConfig.supabase_url || !state.authConfig.supabase_anon_key) {
     return;
   }
+  if (window.supabaseClient?.supabaseUrl === state.authConfig.supabase_url) return;
   if (window.supabase && typeof window.supabase.createClient === 'function') {
     try {
+      // Only the single-use PKCE verifier needs to survive a redirect.
+      const memory = new Map();
+      const storage = {
+        getItem: key => key.endsWith('-code-verifier') ? sessionStorage.getItem(key) : memory.get(key) ?? null,
+        setItem: (key, value) => key.endsWith('-code-verifier') ? sessionStorage.setItem(key, value) : memory.set(key, value),
+        removeItem: key => { memory.delete(key); sessionStorage.removeItem(key); }
+      };
+      const legacyKey = 'sb-' + new URL(state.authConfig.supabase_url).hostname.split('.')[0] + '-auth-token';
+      localStorage.removeItem(legacyKey);
       window.supabaseClient = window.supabase.createClient(
         state.authConfig.supabase_url,
-        state.authConfig.supabase_anon_key
+        state.authConfig.supabase_anon_key,
+        { auth: { flowType: 'pkce', storage } }
       );
       console.log('Supabase client initialized successfully.');
 
@@ -1680,7 +1643,7 @@ function initSupabaseClient() {
 
       // Listen to auth state changes
       window.supabaseClient.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'SIGNED_IN' && session && session.access_token) {
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.access_token) {
           await syncSupabaseSession(session.access_token);
         } else if (event === 'SIGNED_OUT') {
           if (state.user) {
@@ -1703,7 +1666,7 @@ async function syncSupabaseSession(accessToken) {
     "Authorizing user session..."
   );
   try {
-    const res = await fetch(apiEndpoint('/api/v1/auth/session'), {
+    const res = await apiFetch('/api/v1/auth/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ access_token: accessToken })
@@ -1792,7 +1755,7 @@ async function saveSupabaseCredentials() {
   }
 
   try {
-    const res = await fetch(apiEndpoint('/api/v1/auth/configure'), {
+    const res = await apiFetch('/api/v1/auth/configure', {
       method: 'POST',
       headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
@@ -1819,6 +1782,36 @@ async function saveSupabaseCredentials() {
       saveBtn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i><span>Save & Activate Supabase</span>';
       if (window.lucide) lucide.createIcons();
     }
+  }
+}
+
+async function startGoogleRedirect() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const base64url = bytes => btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  const verifier = base64url(bytes);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  sessionStorage.setItem('google_verifier', verifier);
+  const query = new URLSearchParams({ challenge: base64url(new Uint8Array(digest)), return_to: location.origin + location.pathname });
+  const callback = state.authConfig.google_redirect_uri;
+  const login = callback ? new URL('/api/v1/auth/google/login', callback).href : apiEndpoint('/api/v1/auth/google/login');
+  location.assign(login + '?' + query);
+}
+
+async function finishGoogleRedirect() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (!params.has('google_code') && !params.has('auth_error')) return;
+  history.replaceState({}, '', location.pathname + location.search);
+  const verifier = sessionStorage.getItem('google_verifier');
+  sessionStorage.removeItem('google_verifier');
+  try {
+    if (!verifier || !params.has('google_code')) throw new Error();
+    const response = await apiFetch('/api/v1/auth/google/exchange', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: params.get('google_code'), verifier })
+    });
+    if (!response.ok) throw new Error();
+  } catch {
+    showToastNotification('Google sign-in expired. Please sign in again.', 'error');
   }
 }
 
@@ -1856,7 +1849,7 @@ async function initiateGoogleSignIn() {
             "Redirecting to Google OAuth authentication...",
             "Redirecting to Google..."
           );
-          window.location.href = apiEndpoint('/api/v1/auth/google/login');
+          await startGoogleRedirect();
           return;
         }
         hideLoginLoading();
@@ -1876,7 +1869,7 @@ async function initiateGoogleSignIn() {
           "Redirecting to Google OAuth authentication...",
           "Redirecting to Google..."
         );
-        window.location.href = apiEndpoint('/api/v1/auth/google/login');
+        await startGoogleRedirect();
         return;
       }
       hideLoginLoading();
@@ -1894,7 +1887,7 @@ async function initiateGoogleSignIn() {
       "Redirecting to Google OAuth authentication...",
       "Redirecting to Google..."
     );
-    window.location.href = apiEndpoint('/api/v1/auth/google/login');
+    await startGoogleRedirect();
     return;
   }
 
@@ -1915,7 +1908,7 @@ async function handleGoogleCredentialResponse(response) {
   );
 
   try {
-    const res = await fetch(apiEndpoint('/api/v1/auth/google'), {
+    const res = await apiFetch('/api/v1/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ credential: response.credential })
@@ -1961,6 +1954,10 @@ function toggleAuthBox(mode, event) {
   if (event) event.preventDefault();
   const boxLogin = document.getElementById('auth-box-login');
   const boxRegister = document.getElementById('auth-box-register');
+  const codeInput = document.getElementById('reg-code');
+  codeInput.value = '';
+  delete codeInput.dataset.challenge;
+  document.getElementById('reg-code-label').classList.add('hidden');
   if (mode === 'register') {
     if (boxLogin) boxLogin.classList.add('hidden');
     if (boxRegister) boxRegister.classList.remove('hidden');
@@ -2000,7 +1997,7 @@ async function handleForgotPassword(event) {
   }
 
   try {
-    const res = await fetch(apiEndpoint('/api/v1/auth/recover-password'), {
+    const res = await apiFetch('/api/v1/auth/recover-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
@@ -2068,7 +2065,7 @@ async function handleEmailPasswordLogin(event) {
     }
 
     // 2. Authenticate through backend endpoint (proxy to Supabase or DB)
-    const res = await fetch(apiEndpoint('/api/v1/auth/login'), {
+    const res = await apiFetch('/api/v1/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, remember_me: remember })
@@ -2125,49 +2122,30 @@ async function handleRegister(event) {
       "Registering profile..."
     );
 
-    // 1. If Supabase client is initialized on frontend, register directly
-    if (window.supabaseClient && state.authConfig?.supabase_enabled) {
-      try {
-        const { data, error } = await window.supabaseClient.auth.signUp({
-          email: email,
-          password: password,
-          options: {
-            data: { name: name, role: role }
-          }
-        });
-
-        if (error) {
-          hideLoginLoading();
-          showToastNotification(error.message || 'Supabase registration failed.', 'error');
-          return;
-        }
-
-        if (data?.session?.access_token) {
-          const user = await syncSupabaseSession(data.session.access_token);
-          if (user) {
-            showAuthNotification(`Account created! Welcome, ${user.name}`);
-            return;
-          }
-        } else if (data?.user) {
-          hideLoginLoading();
-          showToastNotification('Account created! Please check your institutional email to confirm.', 'info');
-          toggleAuthBox('login', event);
-          return;
-        }
-      } catch (clientErr) {
-        console.warn('Frontend Supabase sign-up exception, falling back to backend:', clientErr);
-      }
-    }
-
-    // 2. Register through backend endpoint
-    const res = await fetch(apiEndpoint('/api/v1/auth/register'), {
+    const codeInput = document.getElementById('reg-code');
+    const res = await apiFetch('/api/v1/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, role, password })
+      body: JSON.stringify({ name, email, role, password, challenge: codeInput.dataset.challenge || null, verification_code: codeInput.value || null })
     });
 
     if (res.ok) {
       const user = await res.json();
+      if (user.status === 'verification_required') {
+        hideLoginLoading();
+        if (user.challenge) {
+          codeInput.dataset.challenge = user.challenge;
+          document.getElementById('reg-code-label').classList.remove('hidden');
+          codeInput.focus();
+        } else {
+          toggleAuthBox('login');
+        }
+        showToastNotification(user.message, 'info');
+        return;
+      }
+      codeInput.value = '';
+      delete codeInput.dataset.challenge;
+      document.getElementById('reg-code-label').classList.add('hidden');
       setAuthenticatedUser(user);
       showAuthNotification(`Account created! Welcome, ${user.name}`);
     } else {
@@ -2257,13 +2235,8 @@ function closeGoogleAuthModal() {
 
 async function handleSignOut() {
   try {
-    const token = state.user?.token;
-    if (token) {
-      await fetch(apiEndpoint('/api/v1/auth/logout'), {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-    }
+    const result = await apiFetch('/api/v1/auth/logout', { method: 'POST' });
+    if (!result.ok) throw new Error('Sign-out failed. Please try again.');
     if (window.supabaseClient) {
       try {
         await window.supabaseClient.auth.signOut();
@@ -2272,7 +2245,8 @@ async function handleSignOut() {
       }
     }
   } catch (e) {
-    console.debug('Logout request completed', e);
+    showToastNotification('Sign-out failed. Please try again.', 'error');
+    return;
   }
 
   clearAuthenticatedUser();
@@ -2441,7 +2415,7 @@ async function loadConversationsList() {
   const currentSeq = ++conversationFetchSeq;
   const currentSub = state.user ? state.user.sub : null;
 
-  if (!state.user || !state.user.token) {
+  if (!state.user) {
     container.innerHTML = `
       <div class="py-8 text-center text-xs text-neutral-400 font-mono-code space-y-2">
         <i data-lucide="lock" class="w-6 h-6 mx-auto text-neutral-300"></i>
@@ -2461,7 +2435,7 @@ async function loadConversationsList() {
   `;
 
   try {
-    const res = await fetch(apiEndpoint('/api/v1/conversations'), {
+    const res = await apiFetch('/api/v1/conversations', {
       headers: getAuthHeaders()
     });
 
@@ -2540,13 +2514,16 @@ async function loadConversationsList() {
           <div class="flex items-center space-x-2 text-[10px] text-neutral-400 font-mono-code">
             <span>${dt}</span>
             <span>•</span>
-            <span>${c.message_count || 0} msgs</span>
+            <span>${escapeHtml(c.message_count || 0)} msgs</span>
           </div>
         </div>
-        <button id="conv-del-btn-${c.id}" onclick="deleteConversationSession('${c.id}', event)" class="text-neutral-400 hover:text-rose-600 p-1 rounded transition cursor-pointer flex-shrink-0" title="Delete chat">
+        <button type="button" class="text-neutral-400 hover:text-rose-600 p-1 rounded transition cursor-pointer flex-shrink-0" title="Delete chat">
           <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
         </button>
       `;
+      const removeButton = el.querySelector('button');
+      removeButton.id = 'conv-del-btn-' + c.id;
+      removeButton.addEventListener('click', event => deleteConversationSession(c.id, event));
       container.appendChild(el);
     });
 
@@ -2555,7 +2532,7 @@ async function loadConversationsList() {
     if (currentSeq !== conversationFetchSeq) return;
     container.innerHTML = `
       <div class="p-3 text-xs text-rose-600 font-mono-code">
-        Error loading conversations: ${err.message}
+        Error loading conversations: ${escapeHtml(err.message)}
       </div>
     `;
   }
@@ -2604,7 +2581,7 @@ async function loadConversationSession(convId, autoClose = true, autoSwitch = tr
       `;
     }
 
-    const res = await fetch(apiEndpoint(`/api/v1/conversations/${convId}`), {
+    const res = await apiFetch(`/api/v1/conversations/${convId}`, {
       headers: getAuthHeaders()
     });
     if (res.status === 401 || res.status === 403 || res.status === 404) {
@@ -2724,7 +2701,7 @@ async function deleteConversationSession(convId, event) {
           delBtn.innerHTML = '<div class="inline-block animate-spin w-3.5 h-3.5 border-2 border-rose-600 border-t-transparent rounded-full"></div>';
         }
 
-        const res = await fetch(apiEndpoint(`/api/v1/conversations/${convId}`), {
+        const res = await apiFetch(`/api/v1/conversations/${convId}`, {
           method: 'DELETE',
           headers: getAuthHeaders()
         });

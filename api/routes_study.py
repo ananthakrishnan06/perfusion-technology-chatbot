@@ -5,7 +5,9 @@ from generation.groq_client import GroqConfigurationError, GroqAPIError
 from generation.gemini_client import GeminiConfigurationError, GeminiAPIError
 from api.dependencies import get_chat_service
 
-router = APIRouter(prefix="/study", tags=["Study & MCQs"])
+from api.usage_limits import check_ai_quota
+
+router = APIRouter(dependencies=[Depends(check_ai_quota)], prefix="/study", tags=["Study & MCQs"])
 
 
 @router.post(

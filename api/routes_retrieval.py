@@ -5,7 +5,7 @@ from schemas.auth import UserProfile
 from services.retrieval_service import RetrievalService
 from services.document_service import DocumentService
 from api.dependencies import get_retrieval_service, get_document_service
-from api.routes_auth import get_current_user
+from api.routes_auth import require_admin
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -40,22 +40,13 @@ def search_sources(
     summary="Rebuild vector and keyword indices from stored metadata"
 )
 def rebuild_index(
-    current_user: UserProfile = Depends(get_current_user),
+    current_user: UserProfile = Depends(require_admin),
     doc_service: DocumentService = Depends(get_document_service)
 ):
     """
     Rebuild FAISS dense vector index and BM25 sparse keyword index from all
     currently indexed document chunks. Requires administrative privileges.
     """
-    user_email = (current_user.email or "").strip().lower()
-    user_role = (current_user.role or "").strip().lower()
-    is_admin = user_role in ("admin", "administrator") or user_email in settings.ADMIN_EMAILS
-    if not is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Administrative privileges required to rebuild indices."
-        )
-
     try:
         result = doc_service.rebuild_indices()
         return result

@@ -6,8 +6,8 @@
  */
 
 window.PERFUSION_CONFIG = {
-  // Live Render Backend Base URL
-  API_BASE_URL: "https://perfusion-backend.onrender.com",
+  // Same-origin API proxy keeps browser session cookies first-party.
+  API_BASE_URL: "",
   
   // App Version
   VERSION: "1.0.0"

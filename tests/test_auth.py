@@ -41,11 +41,7 @@ def test_auth_unauthorized_me():
     assert res_invalid.status_code == 401
 
 
-def test_auth_configure_and_login_redirect():
-    """Test POST /api/v1/auth/configure and GET /api/v1/auth/google/login with security checks."""
-    from api.routes_auth import generate_session_token, ACTIVE_SESSIONS
-    from schemas.auth import UserProfile
-
+def test_auth_configure_and_login_redirect(admin_auth_headers, auth_headers):
     # 1. Verify unauthenticated configure is rejected with 401
     unauth_res = client.post(
         "/api/v1/auth/configure",
@@ -57,13 +53,9 @@ def test_auth_configure_and_login_redirect():
     assert unauth_res.status_code == 401
 
     # 2. Verify non-admin configure is rejected with 403
-    student_token = generate_session_token("student_123", "student@clinic.edu")
-    ACTIVE_SESSIONS[student_token] = UserProfile(
-        sub="student_123", email="student@clinic.edu", name="Student", role="student", token=student_token
-    )
     forbidden_res = client.post(
         "/api/v1/auth/configure",
-        headers={"Authorization": f"Bearer {student_token}"},
+        headers=auth_headers,
         json={
             "supabase_url": "https://mockproject.supabase.co",
             "supabase_anon_key": "mock_anon_key_123"
@@ -72,11 +64,7 @@ def test_auth_configure_and_login_redirect():
     assert forbidden_res.status_code == 403
 
     # 3. Verify admin configure succeeds with 200
-    admin_token = generate_session_token("admin_123", "admin@clinic.edu")
-    ACTIVE_SESSIONS[admin_token] = UserProfile(
-        sub="admin_123", email="admin@clinic.edu", name="Admin", role="admin", token=admin_token
-    )
-    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    admin_headers = admin_auth_headers
     try:
         conf_res = client.post(
             "/api/v1/auth/configure",
@@ -95,19 +83,18 @@ def test_auth_configure_and_login_redirect():
         assert conf_data["google_client_id"] == "test-mock-client-id.apps.googleusercontent.com"
 
         # Test login redirect (should redirect to accounts.google.com)
-        login_res = client.get("/api/v1/auth/google/login", follow_redirects=False)
+        login_res = client.get("/api/v1/auth/google/login", params={"challenge": "a" * 43}, follow_redirects=False)
         assert login_res.status_code in (302, 307)
         assert "accounts.google.com" in login_res.headers["location"]
 
-        # Test open redirect protection on login endpoint
-        evil_login_res = client.get("/api/v1/auth/google/login?return_to=https://evil.com", follow_redirects=False)
-        assert evil_login_res.status_code in (302, 307)
-        assert "evil.com" not in evil_login_res.headers["location"]
-
-        # Test callback error handling
-        cb_res = client.get("/api/v1/auth/google/callback?error=access_denied", follow_redirects=False)
-        assert cb_res.status_code in (302, 307)
-        assert "auth_error=access_denied" in cb_res.headers["location"]
+        from urllib.parse import parse_qs, urlparse
+        state = parse_qs(urlparse(login_res.headers["location"]).query)["state"][0]
+        assert client.get("/api/v1/auth/google/callback", params={"error": "access_denied"}).status_code == 400
+        cb_res = client.get("/api/v1/auth/google/callback", params={"state": state, "error": "access_denied"},
+                            follow_redirects=False)
+        assert cb_res.status_code == 307 and "auth_error=" in cb_res.headers["location"]
+        assert client.get("/api/v1/auth/google/login", params={"challenge": "a" * 43,
+                          "return_to": "https://untrusted.invalid/"}).status_code == 400
     finally:
         # Cleanly restore
         client.post(
@@ -117,13 +104,12 @@ def test_auth_configure_and_login_redirect():
         )
 
 
-def test_auth_email_register_and_login():
+def test_auth_email_register_and_login(verified_registration):
     """Test POST /api/v1/auth/register and subsequent login."""
     import uuid
     unique_email = f"clinician_{uuid.uuid4().hex[:8]}@clinic.edu"
-    reg_res = client.post(
-        "/api/v1/auth/register",
-        json={
+    reg_res = verified_registration(
+        client, {
             "name": "Dr. Perfusion Specialist",
             "email": unique_email,
             "password": "secure_password_123",
@@ -173,13 +159,12 @@ def test_auth_recover_password():
     assert "message" in data
 
 
-def test_register_role_escalation_prevented():
+def test_register_role_escalation_prevented(verified_registration):
     """Test that unauthorized clients cannot assign themselves admin role on registration."""
     import uuid
     attacker_email = f"attacker_{uuid.uuid4().hex[:8]}@untrusted.com"
-    res = client.post(
-        "/api/v1/auth/register",
-        json={
+    res = verified_registration(
+        client, {
             "email": attacker_email,
             "name": "Attacker",
             "password": "strongPassword123!",

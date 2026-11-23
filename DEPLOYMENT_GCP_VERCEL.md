@@ -72,22 +72,11 @@ Test it in your browser:
 
 ## Part 2: Deploy Frontend to Vercel
 
-### Step 1: Update API URL in `frontend/config.js`
-Before deploying frontend, paste your Cloud Run URL into `frontend/config.js`:
-```javascript
-window.PERFUSION_CONFIG = {
-  API_BASE_URL: "https://perfusion-backend-xxxxxx-uc.a.run.app",
-  VERSION: "1.0.0"
-};
-```
-Commit and push this change to GitHub:
-```bash
-git add frontend/config.js
-git commit -m "chore: point frontend to live Cloud Run backend"
-git push origin main
-```
+### Step 1: Route browser API requests through Vercel
 
----
+Set the rewrite destinations in `frontend/vercel.json` (or `vercel.json` for a repository-root build) to your Cloud Run service. Keep `API_BASE_URL` empty so the browser uses its own origin and can send the HTTP-only session cookie.
+
+On the backend set `FRONTEND_URL` to your Vercel origin. For direct Google sign-in set `GOOGLE_REDIRECT_URI` to the registered HTTPS callback ending in `/api/v1/auth/google/callback`. Enable email confirmation in Supabase, or configure the STARTTLS SMTP settings in `.env.example` for local email registration. Set a persistent `SECRET_KEY` across backend instances.
 
 ### Step 2: Import into Vercel
 1. Go to [Vercel Dashboard](https://vercel.com/new).

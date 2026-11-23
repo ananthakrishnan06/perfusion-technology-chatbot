@@ -4,7 +4,7 @@
 // STRICT SECURITY POLICY: API calls, authentication tokens, private chat histories,
 // and user data are NEVER stored in CacheStorage.
 
-const CACHE_NAME = 'perfusion-ai-v20261019_v2';
+const CACHE_NAME = 'perfusion-ai-session-v3';
 
 // Static Shell Assets to Pre-cache
 const PRECACHE_ASSETS = [
@@ -30,6 +30,7 @@ function isApiOrSensitiveRequest(url, request) {
   // Only GET requests can be considered for caching
   if (request.method !== 'GET') return true;
 
+  if (url.searchParams.has('auth_token') || url.searchParams.has('code')) return true;
   const pathname = url.pathname.toLowerCase();
   
   // Explicitly bypass all backend APIs

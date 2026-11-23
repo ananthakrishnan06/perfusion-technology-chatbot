@@ -1,6 +1,6 @@
 from functools import lru_cache
 from typing import Optional
-from fastapi import Header
+from fastapi import Request, Header
 from config import settings
 from storage.metadata_store import MetadataStore
 from retrieval.embeddings import EmbeddingManager
@@ -79,14 +79,14 @@ def get_conversation_service() -> ConversationService:
     return get_container().conversation_service
 
 
-async def get_current_user(authorization: Optional[str] = Header(None)):
+async def get_current_user(request: Request, authorization: Optional[str] = Header(None)):
     from api.routes_auth import get_current_user as _gcu
-    return await _gcu(authorization)
+    return await _gcu(request, authorization)
 
 
-async def get_optional_current_user(authorization: Optional[str] = Header(None)):
+async def get_optional_current_user(request: Request, authorization: Optional[str] = Header(None)):
     from api.routes_auth import get_optional_current_user as _gocu
-    return await _gocu(authorization)
+    return await _gocu(request, authorization)
 
 
 

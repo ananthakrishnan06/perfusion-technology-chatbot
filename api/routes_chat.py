@@ -13,7 +13,9 @@ from storage.db import is_db_configured
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/chat", tags=["Chat"])
+from api.usage_limits import check_ai_quota
+
+router = APIRouter(dependencies=[Depends(check_ai_quota)], prefix="/chat", tags=["Chat"])
 
 
 class TranscribeResponse(BaseModel):

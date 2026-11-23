@@ -6,6 +6,26 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health check (API prefix)",
+        "description": "Check service health and version information.",
+        "operationId": "health_check_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -32,17 +52,35 @@
           "Documents"
         ],
         "summary": "Upload and process one or more PDF documents",
-        "description": "Ingest PDF documents into the PerfusionGPT knowledge base.\n\nValidates file extensions, size, structure, extracts text with PyMuPDF,\nperforms structure-aware chunking, generates embeddings, and indexes\nin FAISS and BM25.",
+        "description": "Ingest PDF documents into the PerfusionGPT knowledge base.\nRequires verified user authentication.\nValidates file extensions, size incrementally, structure, extracts text with PyMuPDF,\nperforms structure-aware chunking, generates embeddings, and indexes in FAISS and BM25.",
         "operationId": "upload_documents_api_v1_documents_upload_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_upload_documents_api_v1_documents_upload_post"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -74,8 +112,26 @@
           "Documents"
         ],
         "summary": "List all indexed documents",
-        "description": "Retrieve all registered documents, their identifiers, filenames,\npage counts, chunk counts, and processing statuses.",
+        "description": "Retrieve all registered documents, their identifiers, filenames,\npage counts, chunk counts, and processing statuses.\nRequires verified user authentication.",
         "operationId": "list_documents_api_v1_documents_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -83,6 +139,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -96,7 +162,7 @@
           "Documents"
         ],
         "summary": "Get document details and sample passages",
-        "description": "Retrieve metadata, page counts, OCR flags, and sample chunks for a specific document.",
+        "description": "Retrieve metadata, page counts, OCR flags, and sample chunks for a specific document.\nRequires verified user authentication.",
         "operationId": "get_document_api_v1_documents__document_id__get",
         "parameters": [
           {
@@ -106,6 +172,22 @@
             "schema": {
               "type": "string",
               "title": "Document Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           }
         ],
@@ -137,7 +219,7 @@
           "Documents"
         ],
         "summary": "Delete a document and exclude all its passages",
-        "description": "Remove a document from the active knowledge base, delete its stored file,\nand rebuild vector and keyword indices to ensure its passages are completely excluded.",
+        "description": "Remove a document from the active knowledge base, delete its stored file,\nand rebuild vector and keyword indices to ensure its passages are completely excluded.\nRequires verified user authentication.",
         "operationId": "delete_document_api_v1_documents__document_id__delete",
         "parameters": [
           {
@@ -147,6 +229,22 @@
             "schema": {
               "type": "string",
               "title": "Document Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           }
         ],
@@ -220,14 +318,42 @@
           "Retrieval & Indexing"
         ],
         "summary": "Rebuild vector and keyword indices from stored metadata",
-        "description": "Rebuild FAISS dense vector index and BM25 sparse keyword index from all\ncurrently indexed document chunks.",
+        "description": "Rebuild FAISS dense vector index and BM25 sparse keyword index from all\ncurrently indexed document chunks. Requires administrative privileges.",
         "operationId": "rebuild_index_api_v1_index_rebuild_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -240,13 +366,131 @@
           "Chat"
         ],
         "summary": "Ask an evidence-grounded Perfusion Technology question",
-        "description": "Ask a question grounded in the uploaded Perfusion Technology documents.\n\nRetrieves the most relevant passages using hybrid FAISS and BM25 search,\nsynthesizes an evidence-grounded answer via Groq API, and returns verifiable\nsource citations with 1-based original PDF page numbers.",
+        "description": "Ask a question grounded in the uploaded Perfusion Technology documents.\n\nRetrieves the most relevant passages using hybrid FAISS and BM25 search,\nsynthesizes an evidence-grounded answer via Google Gemini (with automatic Groq fallback),\nand returns verifiable source citations with 1-based original PDF page numbers.",
         "operationId": "ask_question_api_v1_chat_ask_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/stream": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Stream an evidence-grounded Perfusion Technology answer in real time",
+        "description": "Stream tokens in real-time as Server-Sent Events (SSE) for instant UI responsiveness.",
+        "operationId": "stream_question_api_v1_chat_stream_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/transcribe": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Transcribe spoken audio recording to text via Groq Whisper",
+        "description": "Transcribe microphone audio using Groq's official whisper-large-v3-turbo model.\nIncludes clinical Perfusion Technology terminology priming for high accuracy.",
+        "operationId": "transcribe_audio_endpoint_api_v1_chat_transcribe_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_transcribe_audio_endpoint_api_v1_chat_transcribe_post"
               }
             }
           },
@@ -258,7 +502,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChatResponse"
+                  "$ref": "#/components/schemas/TranscribeResponse"
                 }
               }
             }
@@ -317,10 +561,1062 @@
           }
         }
       }
+    },
+    "/api/v1/auth/config": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Get Auth Config",
+        "description": "Returns Supabase & Google configuration for frontend initialization.",
+        "operationId": "get_auth_config_api_v1_auth_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/configure": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Configure Auth",
+        "description": "Dynamically update Supabase / Google OAuth credentials, persist them to .env, and update runtime settings.\nRequires administrative privileges.",
+        "operationId": "configure_auth_api_v1_auth_configure_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigureAuthRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/google/login": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Google Login",
+        "operationId": "google_login_api_v1_auth_google_login_get",
+        "parameters": [
+          {
+            "name": "challenge",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Challenge"
+            }
+          },
+          {
+            "name": "return_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/google/callback": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Google Callback",
+        "operationId": "google_callback_api_v1_auth_google_callback_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Code"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "State"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/google/exchange": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Google Exchange",
+        "operationId": "google_exchange_api_v1_auth_google_exchange_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleCodeExchange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/google": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Authenticate Google",
+        "description": "Verifies a Google ID Token (JWT) sent from the frontend Google Sign-In button.\nCalls Google's official tokeninfo endpoint to validate signature, audience, and claims.",
+        "operationId": "authenticate_google_api_v1_auth_google_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleAuthRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Me Endpoint",
+        "description": "Retrieve current authenticated user profile from Authorization header.\nValidates token against Supabase Auth API, in-memory cache, or signed session store.",
+        "operationId": "me_endpoint_api_v1_auth_me_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Logout",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/session": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Sync Supabase Session",
+        "description": "Sync frontend Supabase session to backend, verifying the JWT with Supabase Auth API.",
+        "operationId": "sync_supabase_session_api_v1_auth_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupabaseSessionSyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/recover-password": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Recover Password",
+        "description": "Request password recovery email via Supabase Auth.",
+        "operationId": "recover_password_api_v1_auth_recover_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordRecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Login With Email",
+        "description": "Institutional Email and Password login.\nUses Supabase Auth when configured, or local verified database accounts.\nNO DEMO ACCOUNTS.",
+        "operationId": "login_with_email_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Register Account",
+        "operationId": "register_account_api_v1_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/UserProfile"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RegistrationPending"
+                    }
+                  ],
+                  "title": "Response Register Account Api V1 Auth Register Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations": {
+      "get": {
+        "tags": [
+          "Conversations & Memory"
+        ],
+        "summary": "List all conversation sessions for authenticated user",
+        "description": "Retrieve all conversation sessions belonging strictly to the authenticated user.",
+        "operationId": "list_conversations_api_v1_conversations_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Conversations & Memory"
+        ],
+        "summary": "Create a new conversation session for authenticated user",
+        "description": "Create a new chat session owned by the authenticated user.",
+        "operationId": "create_conversation_api_v1_conversations_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/memories/all": {
+      "get": {
+        "tags": [
+          "Conversations & Memory"
+        ],
+        "summary": "List stored long-term clinical memories for user",
+        "description": "Retrieve clinical memories stored for the authenticated user across their sessions.",
+        "operationId": "list_memories_api_v1_conversations_memories_all_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/memories": {
+      "post": {
+        "tags": [
+          "Conversations & Memory"
+        ],
+        "summary": "Manually store a long-term memory for user",
+        "description": "Store a clinical fact or user preference in long-term memory for the authenticated user.",
+        "operationId": "create_memory_api_v1_conversations_memories_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversation_id}": {
+      "get": {
+        "tags": [
+          "Conversations & Memory"
+        ],
+        "summary": "Get conversation details and full turn history",
+        "description": "Load a specific conversation with all historical user and assistant messages.\nEnforces that the conversation belongs to the authenticated user.",
+        "operationId": "get_conversation_api_v1_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Conversations & Memory"
+        ],
+        "summary": "Rename a conversation session",
+        "description": "Rename an existing conversation belonging to the authenticated user.",
+        "operationId": "rename_conversation_api_v1_conversations__conversation_id__patch",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationRenameRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Conversations & Memory"
+        ],
+        "summary": "Delete a conversation session",
+        "description": "Delete a conversation session and all its messages.\nEnforces that the conversation belongs to the authenticated user.",
+        "operationId": "delete_conversation_api_v1_conversations__conversation_id__delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "API Root",
+        "description": "Root endpoint for backend API status and documentation link.",
+        "operationId": "api_root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AuthConfigResponse": {
+        "properties": {
+          "supabase_url": {
+            "type": "string",
+            "title": "Supabase Url",
+            "default": ""
+          },
+          "supabase_anon_key": {
+            "type": "string",
+            "title": "Supabase Anon Key",
+            "default": ""
+          },
+          "supabase_enabled": {
+            "type": "boolean",
+            "title": "Supabase Enabled",
+            "default": false
+          },
+          "google_redirect_uri": {
+            "type": "string",
+            "title": "Google Redirect Uri",
+            "default": ""
+          },
+          "google_client_id": {
+            "type": "string",
+            "title": "Google Client Id",
+            "default": ""
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "'live' if Supabase is configured, otherwise 'setup_required'",
+            "default": "live"
+          }
+        },
+        "type": "object",
+        "title": "AuthConfigResponse",
+        "description": "Configuration endpoint for frontend Supabase & Google Auth initialization."
+      },
+      "Body_transcribe_audio_endpoint_api_v1_chat_transcribe_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_transcribe_audio_endpoint_api_v1_chat_transcribe_post"
+      },
       "Body_upload_documents_api_v1_documents_upload_post": {
         "properties": {
           "files": {
@@ -343,21 +1639,19 @@
         "properties": {
           "role": {
             "type": "string",
-            "pattern": "^(user|assistant)$",
             "title": "Role",
-            "description": "Role: 'user' or 'assistant'"
+            "description": "Role: 'user' or 'assistant'",
+            "default": "user"
           },
           "content": {
             "type": "string",
-            "maxLength": 10000,
-            "minLength": 1,
+            "maxLength": 50000,
             "title": "Content",
             "description": "Message text"
           }
         },
         "type": "object",
         "required": [
-          "role",
           "content"
         ],
         "title": "ChatMessage",
@@ -367,7 +1661,7 @@
         "properties": {
           "question": {
             "type": "string",
-            "maxLength": 2000,
+            "maxLength": 30000,
             "minLength": 1,
             "title": "Question",
             "description": "User question"
@@ -409,6 +1703,18 @@
             ],
             "title": "Conversation History",
             "description": "Optional recent conversation turns for context continuity"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id",
+            "description": "Optional persistent conversation session ID for PostgreSQL storage & memory"
           }
         },
         "type": "object",
@@ -446,6 +1752,42 @@
           "retrieval": {
             "$ref": "#/components/schemas/RetrievalMeta",
             "description": "Retrieval metadata"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id",
+            "description": "Active persistent conversation session ID"
+          },
+          "exam_marks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Marks",
+            "description": "Detected exam marks tier (e.g. 3, 5, 10)"
+          },
+          "target_words": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Words",
+            "description": "Target word count based on marks"
           }
         },
         "type": "object",
@@ -563,6 +1905,96 @@
         ],
         "title": "Citation",
         "description": "Source citation referencing an authentic passage from an uploaded PDF."
+      },
+      "ConfigureAuthRequest": {
+        "properties": {
+          "supabase_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supabase Url",
+            "description": "Supabase project URL"
+          },
+          "supabase_anon_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supabase Anon Key",
+            "description": "Supabase publishable/anon API key"
+          },
+          "google_client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Google Client Id",
+            "description": "Google OAuth 2.0 Web Client ID"
+          },
+          "google_client_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Google Client Secret",
+            "description": "Optional Google OAuth 2.0 Web Client Secret"
+          }
+        },
+        "type": "object",
+        "title": "ConfigureAuthRequest",
+        "description": "Request payload to update Supabase / Google credentials."
+      },
+      "ConversationCreateRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 250
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "default": "New Perfusion Inquiry"
+          }
+        },
+        "type": "object",
+        "title": "ConversationCreateRequest"
+      },
+      "ConversationRenameRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 250,
+            "minLength": 1,
+            "title": "Title",
+            "description": "New title for conversation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "ConversationRenameRequest"
       },
       "DocumentDetailResponse": {
         "properties": {
@@ -786,6 +2218,80 @@
         "title": "DocumentUploadResult",
         "description": "Response returned for a single uploaded document."
       },
+      "EmailLoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "Institutional email address"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "User password"
+          },
+          "remember_me": {
+            "type": "boolean",
+            "title": "Remember Me",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "EmailLoginRequest",
+        "description": "Payload for institutional email/password login."
+      },
+      "GoogleAuthRequest": {
+        "properties": {
+          "credential": {
+            "type": "string",
+            "title": "Credential",
+            "description": "Google ID Token (JWT) returned by Google Identity Services"
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id",
+            "description": "Optional client ID verification check"
+          }
+        },
+        "type": "object",
+        "required": [
+          "credential"
+        ],
+        "title": "GoogleAuthRequest",
+        "description": "Payload sent by the frontend after Google Identity Services authentication."
+      },
+      "GoogleCodeExchange": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Code"
+          },
+          "verifier": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._~-]{43,128}$",
+            "title": "Verifier"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "verifier"
+        ],
+        "title": "GoogleCodeExchange"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -866,7 +2372,7 @@
         "properties": {
           "topic": {
             "type": "string",
-            "maxLength": 500,
+            "maxLength": 5000,
             "minLength": 2,
             "title": "Topic",
             "description": "Perfusion topic (e.g., 'Centrifugal pumps', 'Arterial filters')"
@@ -953,6 +2459,160 @@
         ],
         "title": "MCQResponse",
         "description": "Response containing generated multiple-choice study questions."
+      },
+      "MemoryCreateRequest": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Key"
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Content"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category",
+            "default": "user_preference"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "content"
+        ],
+        "title": "MemoryCreateRequest"
+      },
+      "PasswordRecoveryRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "User's institutional email address"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "PasswordRecoveryRequest",
+        "description": "Payload for requesting a password recovery email via Supabase."
+      },
+      "RegisterRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "Institutional email address"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 8,
+            "title": "Password"
+          },
+          "challenge": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Challenge"
+          },
+          "verification_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Code"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role",
+            "default": "Clinical Perfusionist"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "password"
+        ],
+        "title": "RegisterRequest",
+        "description": "Payload for registering a new clinician account."
+      },
+      "RegistrationPending": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "verification_required",
+            "title": "Status",
+            "default": "verification_required"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "challenge": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Challenge"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "RegistrationPending"
       },
       "RetrievalMeta": {
         "properties": {
@@ -1120,6 +2780,118 @@
         ],
         "title": "RetrievedChunk",
         "description": "A retrieved passage chunk enriched with scoring and citation information."
+      },
+      "SupabaseSessionSyncRequest": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "Supabase Auth JWT access token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "title": "SupabaseSessionSyncRequest",
+        "description": "Sync frontend Supabase session token to backend."
+      },
+      "TranscribeResponse": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "TranscribeResponse"
+      },
+      "UserProfile": {
+        "properties": {
+          "sub": {
+            "type": "string",
+            "title": "Sub",
+            "description": "Unique Google User ID"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "User's primary Google email address"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "User's full display name"
+          },
+          "given_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Given Name"
+          },
+          "family_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Name"
+          },
+          "picture": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Picture",
+            "description": "URL of user's Google profile avatar"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "Clinical or educational user role",
+            "default": "Clinical Perfusionist"
+          },
+          "authenticated": {
+            "type": "boolean",
+            "title": "Authenticated",
+            "default": true
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token",
+            "description": "Application session or bearer token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sub",
+          "email",
+          "name"
+        ],
+        "title": "UserProfile",
+        "description": "User profile data returned upon successful authentication."
       },
       "ValidationError": {
         "properties": {

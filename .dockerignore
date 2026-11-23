@@ -19,6 +19,8 @@ venv/
 Thumbs.db
 
 # Secrets & local config
+.session_secret
+**/.session_secret
 .env
 *.pem
 *.key

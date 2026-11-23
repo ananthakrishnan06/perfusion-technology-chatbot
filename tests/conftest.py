@@ -10,7 +10,7 @@ try:
 except ImportError:
     import fitz
 
-from config import Settings
+from config import Settings, settings
 from storage.metadata_store import MetadataStore
 from retrieval.embeddings import EmbeddingManager
 from retrieval.vector_store import FAISSVectorStore
@@ -85,32 +85,15 @@ def sample_perfusion_pdf_bytes() -> bytes:
 @pytest.fixture
 def auth_headers() -> dict:
     """Provide valid authentication headers for protected endpoints."""
-    from api.routes_auth import generate_session_token, ACTIVE_SESSIONS
-    from schemas.auth import UserProfile
-    token = generate_session_token("test_user_sub", "test_user@clinic.edu")
-    ACTIVE_SESSIONS[token] = UserProfile(
-        sub="test_user_sub",
-        email="test_user@clinic.edu",
-        name="Test Clinician",
-        role="student",
-        token=token
-    )
+    from api.routes_auth import generate_session_token
+    token = generate_session_token("test_user_sub", "student@clinic.edu", verified=True)
     return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
-def admin_auth_headers() -> dict:
-    """Provide valid admin authentication headers for admin-only endpoints."""
-    from api.routes_auth import generate_session_token, ACTIVE_SESSIONS
-    from schemas.auth import UserProfile
-    token = generate_session_token("test_admin_sub", "admin@clinic.edu")
-    ACTIVE_SESSIONS[token] = UserProfile(
-        sub="test_admin_sub",
-        email="admin@clinic.edu",
-        name="Test Administrator",
-        role="admin",
-        token=token
-    )
+def admin_auth_headers():
+    from api.routes_auth import generate_session_token
+    token = generate_session_token("test_admin_sub", "admin@clinic.edu", verified=True)
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -186,12 +169,44 @@ def temp_test_env(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def clean_rate_limits():
-    """Ensure every unit test starts with clean rate limit tables."""
-    from api.routes_auth import reset_rate_limits
-    reset_rate_limits()
-    yield
-    reset_rate_limits()
+def isolated_backend(tmp_path, monkeypatch):
+    """Keep auth, migrations, test emails, and configuration writes inside a disposable environment."""
+    from storage import db
+    from api import routes_auth
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "DATABASE_URL", "sqlite:///" + (tmp_path / "test.db").as_posix())
+    for key in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
+                "GOOGLE_REDIRECT_URI", "FRONTEND_URL", "GEMINI_API_KEY", "GROQ_API_KEY"):
+        monkeypatch.setattr(settings, key, "")
+    monkeypatch.setattr(settings, "ADMIN_EMAILS", ["admin@clinic.edu"])
+    monkeypatch.setattr(settings, "SMTP_HOST", "test.invalid")
+    monkeypatch.setattr(settings, "SMTP_FROM", "test@example.invalid")
+    monkeypatch.setattr(db, "_engine", None)
+    monkeypatch.setattr(db, "_SessionFactory", None)
+    monkeypatch.setattr(routes_auth, "REVOKED_TOKENS_MEM", set())
+    (tmp_path / ".env").touch()
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    codes = {}
+    monkeypatch.setattr(routes_auth, "send_registration_code", codes.__setitem__)
+    db.Base.metadata.create_all(db.get_engine())
+    try:
+        yield codes
+    finally:
+        db.get_engine().dispose()
+
+
+@pytest.fixture
+def verified_registration(isolated_backend):
+    def register(client, payload, headers=None):
+        first = client.post("/api/v1/auth/register", json=payload, headers=headers)
+        assert first.status_code == 200
+        pending = first.json()
+        assert pending["status"] == "verification_required" and "token" not in pending
+        return client.post("/api/v1/auth/register", headers=headers, json={
+            **payload, "challenge": pending["challenge"],
+            "verification_code": isolated_backend[payload["email"].lower()]
+        })
+    return register
 
 
 @pytest.fixture

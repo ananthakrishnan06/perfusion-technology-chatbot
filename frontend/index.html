@@ -26,7 +26,7 @@
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.5.0/dist/purify.min.js" integrity="sha384-DOUwTXbuiiQxlONuue5N42674XXDfjIJ/LTPtJMZ2ZV1Ir4NRQ3OnM/yM505YQAc" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -284,13 +284,17 @@
               <label class="block text-[11px] font-medium text-stone-700 font-sans mb-1">Password</label>
               <div class="relative flex items-center">
                 <span class="absolute left-3.5 text-stone-400 pointer-events-none"><i data-lucide="lock" class="w-4 h-4"></i></span>
-                <input id="reg-password" type="password" required minlength="4" placeholder="Choose a secure password" class="w-full bg-[#FAF8F5]/60 border border-stone-200 rounded-xl pl-10 pr-10 py-2.5 text-xs text-stone-900 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition font-sans" />
+                <input id="reg-password" type="password" required minlength="8" placeholder="Choose a secure password" class="w-full bg-[#FAF8F5]/60 border border-stone-200 rounded-xl pl-10 pr-10 py-2.5 text-xs text-stone-900 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none transition font-sans" />
                 <button type="button" onclick="togglePasswordVisibility('reg-password', 'reg-pwd-eye')" class="absolute right-3.5 text-stone-400 hover:text-stone-700 transition cursor-pointer">
                   <i id="reg-pwd-eye" data-lucide="eye" class="w-4 h-4"></i>
                 </button>
               </div>
             </div>
 
+            <label id="reg-code-label" class="hidden block text-xs">
+              Email verification code
+              <input id="reg-code" autocomplete="one-time-code" maxlength="64" class="w-full rounded border px-3 py-2" />
+            </label>
             <button type="submit" id="btn-reg-submit" class="w-full bg-[#18181B] hover:bg-stone-800 active:scale-[0.99] text-white font-medium text-xs sm:text-sm py-2.5 rounded-xl shadow-xs transition flex items-center justify-center space-x-2 cursor-pointer mt-1">
               <span>Create account</span>
               <i data-lucide="arrow-right" class="w-4 h-4"></i>
@@ -1430,7 +1434,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20261018_v4"></script>
-  <script src="app.js?v=20261019_v1"></script>
+  <script src="config.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

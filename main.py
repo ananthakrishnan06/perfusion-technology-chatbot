@@ -94,6 +94,8 @@ async def add_security_and_cache_headers(request: Request, call_next):
         "base-uri 'self';"
     )
 
+    if request.url.path.startswith(settings.API_PREFIX + "/"):
+        response.headers["Cache-Control"] = "private, no-store"
     if request.url.path.startswith("/app") or request.url.path == "/":
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
@@ -130,6 +132,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     detail_str = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     return JSONResponse(
         status_code=exc.status_code,
+        headers=exc.headers,
         content={
             "error": True,
             "status_code": exc.status_code,

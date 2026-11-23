@@ -2,7 +2,7 @@
 Authentication Schemas for Google Sign-In and User Session Management.
 """
 
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field, EmailStr
 
 
@@ -30,6 +30,7 @@ class AuthConfigResponse(BaseModel):
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_enabled: bool = False
+    google_redirect_uri: str = ""
     google_client_id: str = ""
     enabled: bool = False
     mode: str = Field(default="live", description="'live' if Supabase is configured, otherwise 'setup_required'")
@@ -54,8 +55,21 @@ class RegisterRequest(BaseModel):
     """Payload for registering a new clinician account."""
     name: str = Field(..., min_length=2, max_length=100)
     email: str = Field(..., description="Institutional email address")
-    password: str = Field(..., min_length=4)
+    password: str = Field(..., min_length=8, max_length=1024)
+    challenge: Optional[str] = Field(None, max_length=1024)
+    verification_code: Optional[str] = Field(None, max_length=64)
     role: Optional[str] = Field(default="Clinical Perfusionist")
+
+
+class RegistrationPending(BaseModel):
+    status: Literal["verification_required"] = "verification_required"
+    message: str
+    challenge: Optional[str] = None
+
+
+class GoogleCodeExchange(BaseModel):
+    code: str = Field(min_length=1, max_length=4096)
+    verifier: str = Field(pattern=r"^[A-Za-z0-9._~-]{43,128}$")
 
 
 class PasswordRecoveryRequest(BaseModel):

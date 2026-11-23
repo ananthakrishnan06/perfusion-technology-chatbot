@@ -114,6 +114,14 @@ class Settings(BaseSettings):
             return [str(e).strip().lower() for e in v if str(e).strip()]
         return []
 
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+    AI_REQUESTS_PER_MINUTE: int = Field(default=12, ge=1)
+    AI_TOTAL_REQUESTS_PER_MINUTE: int = Field(default=120, ge=1)
+
     # Frontend URL for OAuth Redirects (e.g. https://your-domain.vercel.app)
     FRONTEND_URL: str = Field(default="", description="Public frontend URL for OAuth callback redirects")
 
@@ -140,6 +148,7 @@ class Settings(BaseSettings):
 
     # Google OAuth 2.0 Authentication
     GOOGLE_CLIENT_ID: str = Field(default="", description="Google Cloud OAuth 2.0 Web Client ID")
+    GOOGLE_REDIRECT_URI: str = ""
     GOOGLE_CLIENT_SECRET: str = Field(default="", description="Google Cloud OAuth 2.0 Web Client Secret")
 
     # Supabase Authentication Configuration

@@ -9,25 +9,17 @@ from sqlalchemy.orm import Session
 client = TestClient(app)
 
 
-def register_user(email: str, name: str, password: str = "P@ssword123!", role: str = "Perfusionist"):
-    """Helper to register a user and return their profile with auth headers."""
-    res = client.post(
-        "/api/v1/auth/register",
-        json={
-            "name": name,
-            "email": email,
-            "password": password,
-            "role": role
-        }
-    )
-    assert res.status_code == 200, f"Registration failed: {res.text}"
-    user_data = res.json()
-    token = user_data["token"]
-    headers = {"Authorization": f"Bearer {token}"}
-    return user_data, headers
+@pytest.fixture
+def register_user(verified_registration):
+    def register(email, name, password="P@ssword123!", role="Perfusionist"):
+        res = verified_registration(client, {"email": email, "name": name, "password": password, "role": role})
+        assert res.status_code == 200
+        profile = res.json()
+        return profile, {"Authorization": "Bearer " + profile["token"]}
+    return register
 
 
-def test_conversations_strict_user_isolation(test_client):
+def test_conversations_strict_user_isolation(test_client, register_user):
     """
     Test that User A and User B have strictly isolated conversation lists.
     User A cannot see User B's conversations and vice-versa.
@@ -81,7 +73,7 @@ def test_conversations_strict_user_isolation(test_client):
     assert conv_a2["id"] not in ids_b
 
 
-def test_cross_user_direct_access_forbidden(test_client):
+def test_cross_user_direct_access_forbidden(test_client, register_user):
     """
     Test IDOR prevention: User B cannot GET, PATCH, or DELETE User A's conversation.
     """
@@ -121,7 +113,7 @@ def test_cross_user_direct_access_forbidden(test_client):
     assert get_a_res.json()["title"] == "Private Coronary Perfusion Notes"
 
 
-def test_cross_user_chat_message_injection_forbidden(test_client, monkeypatch):
+def test_cross_user_chat_message_injection_forbidden(test_client, register_user, monkeypatch):
     """
     Test that User B cannot inject messages into User A's conversation via /chat/ask or /chat/stream.
     """
@@ -220,7 +212,7 @@ def test_ephemeral_guest_chat_without_conversation_id(test_client, monkeypatch):
     assert data.get("conversation_id") is None
 
 
-def test_clinical_memories_user_isolation(test_client):
+def test_clinical_memories_user_isolation(test_client, register_user):
     """
     Test that long-term clinical memories are isolated per user.
     """
@@ -259,7 +251,7 @@ def test_clinical_memories_user_isolation(test_client):
     assert "480 seconds standard" not in contents_b
 
 
-def test_legacy_unowned_conversation_cannot_be_accessed_by_any_user(test_client):
+def test_legacy_unowned_conversation_cannot_be_accessed_by_any_user(test_client, register_user):
     """
     Verify that legacy conversations where user_id is NULL are not visible to or modifiable by
     any authenticated user.

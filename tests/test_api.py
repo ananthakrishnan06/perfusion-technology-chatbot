@@ -16,7 +16,7 @@ def test_health_endpoint(test_client):
     assert "version" in data
 
 
-def test_document_upload_and_management_api(test_client, sample_perfusion_pdf_bytes, auth_headers):
+def test_document_upload_and_management_api(test_client, sample_perfusion_pdf_bytes, auth_headers, admin_auth_headers):
     """Test full document REST API flow: upload, list, get details, delete, and auth enforcement."""
     # 0. Verify unauthenticated document access returns 401
     files_unauth = [
@@ -31,7 +31,8 @@ def test_document_upload_and_management_api(test_client, sample_perfusion_pdf_by
     files = [
         ("files", ("perfusion_manual.pdf", sample_perfusion_pdf_bytes, "application/pdf"))
     ]
-    res_upload = test_client.post("/api/v1/documents/upload", files=files, headers=auth_headers)
+    assert test_client.post("/api/v1/documents/upload", files=files, headers=auth_headers).status_code == 403
+    res_upload = test_client.post("/api/v1/documents/upload", files=files, headers=admin_auth_headers)
     assert res_upload.status_code == 200
     upload_data = res_upload.json()
     assert upload_data["total_uploaded"] == 1
@@ -41,14 +42,14 @@ def test_document_upload_and_management_api(test_client, sample_perfusion_pdf_by
     assert upload_data["results"][0]["page_count"] == 3
 
     # 2. List documents
-    res_list = test_client.get("/api/v1/documents", headers=auth_headers)
+    res_list = test_client.get("/api/v1/documents", headers=admin_auth_headers)
     assert res_list.status_code == 200
     list_data = res_list.json()
     assert list_data["total_documents"] == 1
     assert list_data["documents"][0]["document_id"] == doc_id
 
     # 3. Get document details
-    res_detail = test_client.get(f"/api/v1/documents/{doc_id}", headers=auth_headers)
+    res_detail = test_client.get(f"/api/v1/documents/{doc_id}", headers=admin_auth_headers)
     assert res_detail.status_code == 200
     detail_data = res_detail.json()
     assert detail_data["document"]["document_id"] == doc_id
@@ -67,27 +68,28 @@ def test_document_upload_and_management_api(test_client, sample_perfusion_pdf_by
     assert search_data["retrieved_chunks"][0]["page"] == 1
 
     # 5. Delete document
-    res_del = test_client.delete(f"/api/v1/documents/{doc_id}", headers=auth_headers)
+    assert test_client.delete(f"/api/v1/documents/{doc_id}", headers=auth_headers).status_code == 403
+    res_del = test_client.delete(f"/api/v1/documents/{doc_id}", headers=admin_auth_headers)
     assert res_del.status_code == 200
     del_data = res_del.json()
     assert del_data["status"] == "success"
 
     # Verify 404 after deletion
-    res_get_deleted = test_client.get(f"/api/v1/documents/{doc_id}", headers=auth_headers)
+    res_get_deleted = test_client.get(f"/api/v1/documents/{doc_id}", headers=admin_auth_headers)
     assert res_get_deleted.status_code == 404
 
 
-def test_upload_invalid_file(test_client, auth_headers):
+def test_upload_invalid_file(test_client, admin_auth_headers):
     """Test uploading an invalid non-PDF file returns 400 Bad Request."""
     files = [
         ("files", ("notes.txt", b"plain text notes", "text/plain"))
     ]
-    res = test_client.post("/api/v1/documents/upload", files=files, headers=auth_headers)
+    res = test_client.post("/api/v1/documents/upload", files=files, headers=admin_auth_headers)
     assert res.status_code == 400
     assert "Only .pdf files are accepted" in res.json()["detail"]
 
 
-def test_upload_size_limit_streaming(test_client, auth_headers, monkeypatch):
+def test_upload_size_limit_streaming(test_client, admin_auth_headers, monkeypatch):
     """Test that file exceeding MAX_UPLOAD_SIZE_MB is rejected early with 413."""
     from config import settings
     monkeypatch.setattr(settings, "MAX_UPLOAD_SIZE_MB", 1)  # 1 MB threshold for test
@@ -95,7 +97,7 @@ def test_upload_size_limit_streaming(test_client, auth_headers, monkeypatch):
     files = [
         ("files", ("large_test.pdf", oversized_data, "application/pdf"))
     ]
-    res = test_client.post("/api/v1/documents/upload", files=files, headers=auth_headers)
+    res = test_client.post("/api/v1/documents/upload", files=files, headers=admin_auth_headers)
     assert res.status_code == 413
     assert "exceeds maximum allowed upload size" in res.json()["detail"]
 
@@ -115,13 +117,13 @@ def test_chat_ask_missing_evidence(test_client):
     assert len(data["citations"]) == 0
 
 
-def test_chat_ask_with_mocked_groq(test_client, sample_perfusion_pdf_bytes, auth_headers, monkeypatch):
+def test_chat_ask_with_mocked_groq(test_client, sample_perfusion_pdf_bytes, admin_auth_headers, monkeypatch):
     """Test chat ask endpoint with indexed documents and mocked completion response."""
     # 1. Ingest document first
     files = [
         ("files", ("perfusion.pdf", sample_perfusion_pdf_bytes, "application/pdf"))
     ]
-    res_up = test_client.post("/api/v1/documents/upload", files=files, headers=auth_headers)
+    res_up = test_client.post("/api/v1/documents/upload", files=files, headers=admin_auth_headers)
     assert res_up.status_code == 200
 
     # 2. Mock completion generator
@@ -156,13 +158,13 @@ def test_chat_ask_with_mocked_groq(test_client, sample_perfusion_pdf_bytes, auth
     assert data["citations"][0]["page"] == 2
 
 
-def test_chat_groq_api_error_handling(test_client, sample_perfusion_pdf_bytes, auth_headers, monkeypatch):
+def test_chat_groq_api_error_handling(test_client, sample_perfusion_pdf_bytes, admin_auth_headers, monkeypatch):
     """Test that upstream LLM failures return clean 502 Bad Gateway responses without raw exceptions."""
     # Ingest document
     files = [
         ("files", ("perfusion.pdf", sample_perfusion_pdf_bytes, "application/pdf"))
     ]
-    res_up = test_client.post("/api/v1/documents/upload", files=files, headers=auth_headers)
+    res_up = test_client.post("/api/v1/documents/upload", files=files, headers=admin_auth_headers)
     assert res_up.status_code == 200
 
     from api.dependencies import get_container
@@ -180,13 +182,13 @@ def test_chat_groq_api_error_handling(test_client, sample_perfusion_pdf_bytes, a
     assert "upstream provider error" in res.json()["detail"]
 
 
-def test_study_mcq_generation(test_client, sample_perfusion_pdf_bytes, auth_headers, monkeypatch):
+def test_study_mcq_generation(test_client, sample_perfusion_pdf_bytes, admin_auth_headers, monkeypatch):
     """Test MCQ generation endpoint with mocked LLM response."""
     # Ingest document
     files = [
         ("files", ("perfusion.pdf", sample_perfusion_pdf_bytes, "application/pdf"))
     ]
-    res_up = test_client.post("/api/v1/documents/upload", files=files, headers=auth_headers)
+    res_up = test_client.post("/api/v1/documents/upload", files=files, headers=admin_auth_headers)
     assert res_up.status_code == 200
 
     from api.dependencies import get_container
@@ -260,12 +262,12 @@ def test_rebuild_index_endpoint(test_client, sample_perfusion_pdf_bytes, auth_he
     not os.getenv("GROQ_API_KEY") or os.getenv("GROQ_API_KEY").startswith("gsk_your_groq_api_key"),
     reason="Live GROQ_API_KEY not configured. Set GROQ_API_KEY to run live integration test."
 )
-def test_live_groq_integration(test_client, sample_perfusion_pdf_bytes):
+def test_live_groq_integration(test_client, sample_perfusion_pdf_bytes, admin_auth_headers):
     """Optional live integration test that runs when a genuine GROQ_API_KEY is supplied."""
     files = [
         ("files", ("perfusion_live.pdf", sample_perfusion_pdf_bytes, "application/pdf"))
     ]
-    upload_res = test_client.post("/api/v1/documents/upload", files=files)
+    upload_res = test_client.post("/api/v1/documents/upload", files=files, headers=admin_auth_headers)
     assert upload_res.status_code == 200
 
     chat_res = test_client.post("/api/v1/chat/ask", json={

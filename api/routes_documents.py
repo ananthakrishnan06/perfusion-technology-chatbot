@@ -10,6 +10,8 @@ from schemas.document import (
 from services.document_service import DocumentService
 from api.dependencies import get_document_service, get_current_user
 
+from api.routes_auth import require_admin
+
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
 
@@ -21,7 +23,7 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 )
 async def upload_documents(
     files: List[UploadFile] = File(..., description="One or more PDF files to ingest"),
-    current_user: UserProfile = Depends(get_current_user),
+    current_user: UserProfile = Depends(require_admin),
     doc_service: DocumentService = Depends(get_document_service)
 ):
     """
@@ -37,6 +39,9 @@ async def upload_documents(
         )
 
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(files) > 10:
+        raise HTTPException(413, "Upload at most 10 documents at a time.")
+    batch_bytes = 0
     prepared_files = []
     for f in files:
         filename = f.filename or "unknown.pdf"
@@ -53,6 +58,9 @@ async def upload_documents(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                     detail=f"File '{filename}' exceeds maximum allowed upload size of {settings.MAX_UPLOAD_SIZE_MB} MB."
                 )
+            batch_bytes += len(chunk)
+            if batch_bytes > max_bytes:
+                raise HTTPException(413, "The upload exceeds the maximum batch size.")
             chunks.append(chunk)
 
         file_bytes = b"".join(chunks)
@@ -117,7 +125,7 @@ def get_document(
 )
 def delete_document(
     document_id: str,
-    current_user: UserProfile = Depends(get_current_user),
+    current_user: UserProfile = Depends(require_admin),
     doc_service: DocumentService = Depends(get_document_service)
 ):
     """

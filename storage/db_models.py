@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy import Boolean, Column, Integer, DateTime, ForeignKey, JSON, String, Text
 from sqlalchemy.orm import relationship
 from storage.db import Base
 
@@ -9,6 +9,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(String(100), primary_key=True)  # Google 'sub', email hash, or uuid
+    email_verified = Column(Boolean, nullable=False, default=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
     name = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=True)
@@ -178,3 +179,9 @@ class RegisterRateLimit(Base):
 
 
 
+
+class AIUsageWindow(Base):
+    __tablename__ = "ai_usage_windows"
+    bucket = Column(String(64), primary_key=True)
+    minute = Column(Integer, primary_key=True, index=True)
+    requests = Column(Integer, nullable=False)

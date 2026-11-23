@@ -65,22 +65,11 @@ Test it in your browser:
 
 ## Part 2: Connect and Deploy Frontend on Vercel
 
-### Step 1: Update `frontend/config.js`
-Once you have your Render URL, update `frontend/config.js` with your Render URL:
-```javascript
-window.PERFUSION_CONFIG = {
-  API_BASE_URL: "https://perfusion-backend-xxxx.onrender.com",
-  VERSION: "1.0.0"
-};
-```
-Commit and push to GitHub:
-```bash
-git add frontend/config.js
-git commit -m "chore: point frontend to live Render backend"
-git push origin main
-```
+### Step 1: Route browser API requests through Vercel
 
----
+Set the rewrite destinations in `frontend/vercel.json` (or `vercel.json` for a repository-root build) to your Render service. Keep `API_BASE_URL` empty so the browser uses its own origin and can send the HTTP-only session cookie.
+
+On the backend set `FRONTEND_URL` to your Vercel origin. For direct Google sign-in set `GOOGLE_REDIRECT_URI` to the registered HTTPS callback ending in `/api/v1/auth/google/callback`. Enable email confirmation in Supabase, or configure the STARTTLS SMTP settings in `.env.example` for local email registration. Set a persistent `SECRET_KEY` across backend instances.
 
 ### Step 2: Deploy Frontend on Vercel
 1. Go to **[vercel.com/new](https://vercel.com/new)** and log in with GitHub.
