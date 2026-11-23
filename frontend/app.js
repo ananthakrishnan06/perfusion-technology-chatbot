@@ -902,6 +902,7 @@ async function sendChatMessage() {
     formattedQuery += "\n\n[Instruction: Provide an authentic, evidence-grounded answer covering all relevant clinical and technical details strictly derived from the text.]";
   }
 
+  const assistantMsgEl = document.createElement('div');
   try {
     const payloadHistory = (state.chatHistory || [])
       .filter(m => m && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -926,7 +927,6 @@ async function sendChatMessage() {
     let streamSucceeded = false;
 
     // Create assistant message bubble
-    const assistantMsgEl = document.createElement('div');
     assistantMsgEl.className = 'flex items-start space-x-3 max-w-3xl';
     assistantMsgEl.innerHTML = `
       <div class="w-8 h-8 rounded-lg bg-[#18181B] text-amber-300 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
@@ -949,8 +949,9 @@ async function sendChatMessage() {
     const authHeaders = { 'Content-Type': 'application/json' };
 
     // Try streaming endpoint first for instant response
+    let streamRes;
     try {
-      const streamRes = await apiFetch('/api/v1/chat/stream', {
+      streamRes = await apiFetch('/api/v1/chat/stream', {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify(payload)
@@ -1037,6 +1038,11 @@ async function sendChatMessage() {
       console.warn('Streaming encountered issue, falling back to /ask:', streamErr);
     }
 
+    if (streamRes && streamRes.status >= 400 && streamRes.status < 500 &&
+        streamRes.status !== 404 && streamRes.status !== 405) {
+      throw await chatResponseError(streamRes);
+    }
+
     if (!streamSucceeded) {
       if (assistantMsgEl && assistantMsgEl.parentNode) {
         assistantMsgEl.remove();
@@ -1055,9 +1061,7 @@ async function sendChatMessage() {
       hideBackendLoading();
 
       if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        const parsedMsg = extractErrorMessage(errJson, `Server error: ${response.status}`);
-        throw new Error(parsedMsg);
+        throw await chatResponseError(response);
       }
 
       const data = await response.json();
@@ -1101,9 +1105,7 @@ async function sendChatMessage() {
     clearTimeout(chatLoadingTimer);
     hideBackendLoading();
     typingIndicator.remove();
-    if (assistantMsgEl && assistantMsgEl.parentNode) {
-      assistantMsgEl.remove();
-    }
+    assistantMsgEl.remove();
 
     const rawMsg = (err && typeof err.message === 'string') ? err.message : extractErrorMessage(err);
     const displayMsg = (!rawMsg || rawMsg === '[object Object]')
@@ -1118,9 +1120,9 @@ async function sendChatMessage() {
         <i data-lucide="${isNetworkOrColdStart ? 'server' : 'alert-circle'}" class="w-4 h-4"></i>
       </div>
       <div class="${isNetworkOrColdStart ? 'bg-amber-50 border border-amber-200 text-amber-950' : 'bg-rose-50 border border-rose-200 text-rose-900'} rounded-2xl rounded-tl-sm p-3.5 shadow-xs text-xs space-y-1">
-        <p class="font-semibold">${isNetworkOrColdStart ? 'Backend was waking up (Cold Start)' : 'Unable to generate reply'}</p>
+        <p class="font-semibold">Unable to generate reply</p>
         <p class="font-mono-code text-[11px] leading-relaxed">
-          ${isNetworkOrColdStart ? 'Free cloud servers take ~30–45s to spin up from sleep mode. The server is initializing now. Please press Enter or click Send to try again.' : escapeHtml(displayMsg)}
+          ${escapeHtml(displayMsg)}
         </p>
       </div>
     `;
@@ -1130,6 +1132,15 @@ async function sendChatMessage() {
     scrollChatToBottom();
     if (window.lucide) lucide.createIcons();
   }
+}
+
+async function chatResponseError(response) {
+  const body = await response.json().catch(() => ({}));
+  const seconds = Number(response.headers.get('Retry-After'));
+  if (response.status === 429 && Number.isInteger(seconds) && seconds > 0) {
+    return new Error(`The chat request limit was reached. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`);
+  }
+  return new Error(extractErrorMessage(body, `Server error: ${response.status}`));
 }
 
 async function clearChat(confirmFirst = true) {

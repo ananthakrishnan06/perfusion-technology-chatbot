@@ -4,15 +4,15 @@
 // STRICT SECURITY POLICY: API calls, authentication tokens, private chat histories,
 // and user data are NEVER stored in CacheStorage.
 
-const CACHE_NAME = 'perfusion-ai-session-v3';
+const CACHE_NAME = 'perfusion-ai-session-v4';
 
 // Static Shell Assets to Pre-cache
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
-  '/style.css',
-  '/config.js',
-  '/app.js',
+  '/style.css?v=20261018_v10',
+  '/config.js?v=3',
+  '/app.js?v=4',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -125,7 +125,7 @@ self.addEventListener('fetch', (event) => {
   // For static scripts, styles, icons, and images:
   // Stale-While-Revalidate (Fast offline loading + background update)
   event.respondWith(
-    caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
+    caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {

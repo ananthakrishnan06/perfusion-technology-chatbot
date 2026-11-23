@@ -86,14 +86,21 @@ def test_google_redirect_binds_browser_and_exchanges_code(monkeypatch):
 
 def test_shared_ai_quota_across_routes(monkeypatch):
     from api.dependencies import get_chat_service
+    from api import usage_limits
+    from types import SimpleNamespace
     from unittest.mock import Mock
     from schemas.chat import MCQResponse
-    monkeypatch.setattr(settings, "AI_REQUESTS_PER_MINUTE", 1)
+    from sqlalchemy.engine import CursorResult
+    monkeypatch.setattr(usage_limits, "time", SimpleNamespace(time=lambda: 120))
+    # PostgreSQL drivers can report an unknown INSERT row count.
+    monkeypatch.setattr(CursorResult, "rowcount", property(lambda result: -1))
+    monkeypatch.setattr(settings, "AI_REQUESTS_PER_MINUTE", 2)
     service = Mock()
     service.generate_study_mcqs.return_value = MCQResponse(topic="study", questions=[], total_questions=0,
                                                            insufficient_evidence=True, citations=[])
     monkeypatch.setitem(app.dependency_overrides, get_chat_service, lambda: service)
     client = TestClient(app)
+    assert client.post("/api/v1/study/mcq", json={"topic": "study"}).status_code == 200
     assert client.post("/api/v1/study/mcq", json={"topic": "study"}).status_code == 200
     for path in ("ask", "stream"):
         denied = client.post("/api/v1/chat/" + path, json={"question": "study"})

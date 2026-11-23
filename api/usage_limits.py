@@ -49,7 +49,8 @@ def check_ai_quota(request: Request):
                 charge = charge.on_conflict_do_update(
                     index_elements=[table.c.bucket, table.c.minute],
                     set_={"requests": table.c.requests + 1}, where=table.c.requests < limit)
-                if db.execute(charge).rowcount != 1:
+                # INSERT rowcount can be unknown even when the charge succeeded.
+                if db.execute(charge.returning(table.c.requests)).scalar_one_or_none() is None:
                     raise HTTPException(429, "AI usage limit reached. Try again shortly.", headers=retry)
     except SQLAlchemyError:
         raise HTTPException(503, "AI usage tracking is temporarily unavailable.")
