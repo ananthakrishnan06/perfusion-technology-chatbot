@@ -2,6 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "cleanUrls": true,
+  "redirects": [
+    { "source": "/", "destination": "/maintenance", "permanent": false },
+    { "source": "/index", "destination": "/maintenance", "permanent": false },
+    { "source": "/app", "destination": "/maintenance", "permanent": false },
+    { "source": "/app/index", "destination": "/maintenance", "permanent": false }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
@@ -25,6 +31,10 @@
     }
   ],
   "headers": [
+    {
+      "source": "/maintenance",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    },
     {
       "source": "/sw.js",
       "headers": [
