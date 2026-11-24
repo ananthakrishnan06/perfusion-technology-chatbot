@@ -313,20 +313,54 @@ async function sessions() {
 }
 async function analytics(userId="") {
   const [startLabel,start]=field("Start date","start","","date"),[endLabel,end]=field("End date","end","","date");
-  const people=await data("/admin/users");
   const userLabel=tag("label","Person");
-  const user=select([["","Everyone"],...people.map(person=>[person.id,person.username])]);
-  if (people.some(person=>person.id===userId)) user.value=userId;
+  const user=select([["","Everyone"]]);
+  if (userId) user.add(new Option("Selected person", userId, true, true));
   userLabel.append(user);
+  data("/admin/users").then(people=>{
+    const selected=user.value;
+    user.replaceChildren(new Option("Everyone",""));
+    for (const person of people) user.add(new Option(person.username,person.id));
+    if (selected && !people.some(person=>person.id===selected)) {
+      user.add(new Option("Selected person",selected));
+    }
+    user.value=selected;
+  }).catch(()=>notify("The list of people is unavailable. You can still view usage for everyone."));
   function query(){return new URLSearchParams({start:start.value,end:end.value,user_id:user.value});}
   const result=tag("section");
+  let requestVersion=0;
   async function draw(){
-    const values=await data("/admin/usage?"+query());
-    const charts=tag("div");charts.className="charts";
-    for (const [title,key] of [["Daily requests","daily"],["Weekly requests","weekly"],["Monthly requests","monthly"],["Busiest hours (server time)","hourly"],["Active users","active_users"],["Document uploads","uploads"],["Most used PDFs","documents"],["Subjects","subjects"],["Modules","modules"]]) charts.append(chart(title,values[key],["daily","weekly","monthly"].includes(key)));
-    result.replaceChildren(tag("p",values.total+" requests · "+(values.total-values.failed)+" successful · "+values.failed+" failed · Average "+(values.average_ms===null?"unavailable":(values.average_ms/1000).toFixed(1)+" s")),charts);
+    const version=++requestVersion;
+    result.setAttribute("aria-busy","true");
+    result.replaceChildren(tag("p","Loading usage…"));
+    try {
+      const values=await data("/admin/usage?"+query());
+      if (version!==requestVersion) return;
+      const cards=tag("div");
+      cards.className="cards";
+      const metrics = [
+        ["Questions asked",values.total],["Answered",values.total-values.failed],
+        ["Unanswered",values.failed],["Average response",values.average_ms===null?"—":(values.average_ms/1000).toFixed(1)+" s"]
+      ];
+      for (const [label,value] of metrics) {
+        const card=tag("div"); card.className="card";
+        card.append(tag("span",label),tag("strong",value)); cards.append(card);
+      }
+      const charts=tag("div");charts.className="charts";
+      for (const [title,key] of [["Daily requests","daily"],["Weekly requests","weekly"],["Monthly requests","monthly"],["Busiest hours (server time)","hourly"],["Active users","active_users"],["Document uploads","uploads"],["Most used PDFs","documents"],["Subjects","subjects"],["Modules","modules"]]) {
+        if (Object.keys(values[key] ?? {}).length) charts.append(chart(title,values[key]));
+      }
+      const period=tag("p", values.start && values.end ? "Showing "+values.start+" to "+values.end : "");
+      const empty=tag("p","No questions were recorded for this period. Try a wider date range or choose Everyone.");
+      result.replaceChildren(cards,period,...(values.total?[charts]:[empty,charts]));
+    } catch (error) {
+      if (version!==requestVersion) return;
+      result.replaceChildren(tag("p",error.message),button("Try again",draw));
+    } finally {
+      if (version===requestVersion) result.removeAttribute("aria-busy");
+    }
   }
-  await draw();
+  void draw();
   return [container(startLabel,endLabel,userLabel,button("Apply",draw),button("Download report",async()=>{
     const response=await api("/admin/usage?"+query()+"&export=true");
     const url=URL.createObjectURL(await response.blob());const link=tag("a");link.href=url;link.download="usage.csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);

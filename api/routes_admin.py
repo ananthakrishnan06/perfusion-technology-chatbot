@@ -253,9 +253,9 @@ def usage(start: str = "", end: str = "", user_id: str = "", export: bool = Fals
     try:
         last = date.fromisoformat(end) if end else utcnow().date()
         first = date.fromisoformat(start) if start else last-timedelta(days=29)
-        if not 0 <= (last-first).days <= 366:
+        if not 0 <= (last-first).days <= 366 or last == date.max:
             raise ValueError
-    except ValueError:
+    except (ValueError, OverflowError):
         raise HTTPException(400, "Choose a valid date range of up to one year.")
     query = db.query(UsageEvent).filter(UsageEvent.at >= datetime.combine(first, time.min), UsageEvent.at < datetime.combine(last+timedelta(days=1), time.min))
     if user_id:
@@ -289,7 +289,7 @@ def usage(start: str = "", end: str = "", user_id: str = "", export: bool = Fals
             subjects[doc.subject] += documents[doc.document_id]
         if doc.module and documents[doc.document_id]:
             modules[doc.module] += documents[doc.document_id]
-    return {"daily": dict(daily), "weekly": dict(weekly), "monthly": dict(monthly),
+    return {"start": first.isoformat(), "end": last.isoformat(), "daily": dict(daily), "weekly": dict(weekly), "monthly": dict(monthly),
             "hourly": dict(Counter(row.at.hour for row in rows)),
             "active_users": {day: len(ids) for day, ids in activity.items()},
             "uploads": dict(Counter(doc.uploaded_at[:10] for doc in catalog if first.isoformat() <= doc.uploaded_at[:10] <= last.isoformat())),

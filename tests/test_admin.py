@@ -95,3 +95,20 @@ def test_admin_settings_enforce_daily_quota_and_maintenance(test_client, admin_a
     assert test_client.post("/api/v1/chat/stream", json={"question": "Hello"}).status_code == 503
     registration = {"name": "New User", "email": "new@example.org", "password": "a-long-password"}
     assert test_client.post("/api/v1/auth/register", json=registration).status_code == 403
+
+
+
+def test_usage_report_records_stream_and_gives_real_totals(test_client, admin_auth_headers):
+    import json
+    from storage.admin_models import UsageEvent
+
+    response = test_client.post("/api/v1/chat/stream", json={"question": "Hello"})
+    assert response.status_code == 200
+    assert any(json.loads(line[6:])["type"] == "done" for line in response.text.splitlines() if line.startswith("data: "))
+    with get_session_factory()() as db:
+        row = db.query(UsageEvent).one()
+        assert row.operation == "chat_stream" and row.success
+    report = test_client.get("/api/v1/admin/usage", headers=admin_auth_headers).json()
+    assert report["total"] == 1 and report["failed"] == 0
+    assert report["daily"] == {report["end"]: 1}
+    assert report["start"] < report["end"]
