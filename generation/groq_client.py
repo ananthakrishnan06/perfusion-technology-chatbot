@@ -260,8 +260,10 @@ class GroqClientWrapper:
         Stream chat completion tokens in real-time from the Groq API.
         Yields individual token strings as they are generated.
         """
-        fast_model = "llama-3.1-8b-instant"
-        models_to_try = list(dict.fromkeys([fast_model, *self._get_models_to_try()]))[:2]
+        models_to_try = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+        if self.model in models_to_try:
+            models_to_try.remove(self.model)
+            models_to_try.insert(0, self.model)
 
         for current_model in models_to_try:
             yielded_any = False
@@ -271,6 +273,7 @@ class GroqClientWrapper:
                     messages=messages,
                     temperature=self.temperature if temperature is None else temperature,
                     max_tokens=self.max_tokens if max_tokens is None else max_tokens,
+                    reasoning_effort="low",
                     timeout=min(self.timeout, 12.0),
                     stream=True
                 )
@@ -309,6 +312,7 @@ class GroqClientWrapper:
                                 messages=continuation_messages,
                                 temperature=self.temperature if temperature is None else temperature,
                                 max_tokens=min(2048, self.max_tokens if max_tokens is None else max_tokens),
+                                reasoning_effort="low",
                                 timeout=min(self.timeout, 12.0),
                                 stream=True
                             )
@@ -330,7 +334,7 @@ class GroqClientWrapper:
             except GroqConfigurationError:
                 raise
             except Exception as e:
-                if yielded_any or getattr(e, "status_code", None) not in (400, 404):
+                if yielded_any or getattr(e, "status_code", None) not in (400, 403, 404, 429):
                     raise GroqAPIError("Groq could not complete the answer stream.") from e
                 logger.warning("Groq stream model %s was rejected. Trying a fallback model.", current_model)
 
