@@ -70,7 +70,11 @@ class GroqClientWrapper:
         max_tokens: int = settings.GROQ_MAX_TOKENS,
         timeout: float = settings.GROQ_REQUEST_TIMEOUT
     ):
-        self.api_key = api_key or settings.GROQ_API_KEY
+        placeholder = "gsk_your_groq_api_key_here"
+        primary = (api_key or settings.GROQ_API_KEY).strip()
+        backup = settings.GROQ_BACKUP_API_KEY.strip()
+        self.api_key = primary if primary and primary != placeholder else backup
+        self._backup_key = backup if backup not in (self.api_key, placeholder) else ""
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -96,6 +100,26 @@ class GroqClientWrapper:
 
         return self._client
 
+    def _create(self, *, audio=False, **kwargs):
+        from groq import AuthenticationError
+
+        client = self._get_client()
+
+        def send(active_client):
+            endpoint = active_client.audio.transcriptions if audio else active_client.chat.completions
+            return endpoint.create(**kwargs)
+
+        try:
+            return send(client)
+        except AuthenticationError:
+            if self._backup_key:
+                backup_client = client.with_options(api_key=self._backup_key)
+                try:
+                    return send(backup_client)
+                except AuthenticationError:
+                    pass
+            raise GroqConfigurationError("Groq rejected the configured credentials.") from None
+
     def generate_chat_completion(
         self,
         messages: List[Dict[str, str]],
@@ -119,7 +143,6 @@ class GroqClientWrapper:
         except Exception:
             cache_key = None
 
-        client = self._get_client()
 
         models_to_try = self._get_models_to_try()
 
@@ -136,7 +159,7 @@ class GroqClientWrapper:
                 call_kwargs["response_format"] = response_format
 
             try:
-                response = client.chat.completions.create(**call_kwargs)
+                response = self._create(**call_kwargs)
                 choice = response.choices[0]
                 content = choice.message.content or ""
                 finish_reason = getattr(choice, "finish_reason", "stop")
@@ -160,7 +183,7 @@ class GroqClientWrapper:
                             cont_kwargs = dict(call_kwargs)
                             cont_kwargs["messages"] = continuation_messages
                             cont_kwargs["max_tokens"] = min(2048, call_kwargs.get("max_tokens", 2048))
-                            cont_resp = client.chat.completions.create(**cont_kwargs)
+                            cont_resp = self._create(**cont_kwargs)
                             cont_choice = cont_resp.choices[0]
                             cont_text = cont_choice.message.content or ""
                             finish_reason = getattr(cont_choice, "finish_reason", "stop")
@@ -187,6 +210,8 @@ class GroqClientWrapper:
 
                 return content
 
+            except GroqConfigurationError:
+                raise
             except Exception as e:
                 error_type = type(e).__name__
                 error_msg = str(e)
@@ -233,12 +258,11 @@ class GroqClientWrapper:
         Stream chat completion tokens in real-time from the Groq API.
         Yields individual token strings as they are generated.
         """
-        client = self._get_client()
         models_to_try = self._get_models_to_try()
 
         for current_model in models_to_try:
             try:
-                stream = client.chat.completions.create(
+                stream = self._create(
                     model=current_model,
                     messages=messages,
                     temperature=self.temperature if temperature is None else temperature,
@@ -276,7 +300,7 @@ class GroqClientWrapper:
                             )
                         })
                         try:
-                            cont_stream = client.chat.completions.create(
+                            cont_stream = self._create(
                                 model=current_model,
                                 messages=continuation_messages,
                                 temperature=self.temperature if temperature is None else temperature,
@@ -299,6 +323,8 @@ class GroqClientWrapper:
 
                 if yielded_any:
                     return
+            except GroqConfigurationError:
+                raise
             except Exception as e:
                 error_msg = str(e)
                 if "decommissioned" in error_msg.lower() or "not_found" in error_msg.lower() or "model_decommissioned" in error_msg.lower():
@@ -324,9 +350,9 @@ class GroqClientWrapper:
         Transcribe spoken audio recording to text using Groq's official Whisper model.
         Includes medical domain priming prompt for accurate clinical term recognition.
         """
-        client = self._get_client()
         try:
-            transcription = client.audio.transcriptions.create(
+            transcription = self._create(
+                audio=True,
                 file=(filename, file_bytes),
                 model="whisper-large-v3-turbo",
                 language=language or "en",
@@ -335,6 +361,8 @@ class GroqClientWrapper:
                 temperature=0.0
             )
             return transcription.text.strip()
+        except GroqConfigurationError:
+            raise
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Groq Whisper transcription error: {error_msg}")

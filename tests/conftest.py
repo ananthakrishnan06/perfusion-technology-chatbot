@@ -176,7 +176,7 @@ def isolated_backend(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(settings, "DATABASE_URL", "sqlite:///" + (tmp_path / "test.db").as_posix())
     for key in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
-                "GOOGLE_REDIRECT_URI", "FRONTEND_URL", "GEMINI_API_KEY", "GROQ_API_KEY"):
+                "GOOGLE_REDIRECT_URI", "FRONTEND_URL", "GEMINI_API_KEY", "GROQ_API_KEY", "GROQ_BACKUP_API_KEY"):
         monkeypatch.setattr(settings, key, "")
     monkeypatch.setattr(settings, "ADMIN_EMAILS", ["admin@clinic.edu"])
     monkeypatch.setattr(settings, "SMTP_HOST", "test.invalid")

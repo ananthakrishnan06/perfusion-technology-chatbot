@@ -39,6 +39,7 @@ Scroll down to the **Environment Variables** section and click **Add Environment
 
 | Key | Value to Paste |
 | :--- | :--- |
+| **`GROQ_BACKUP_API_KEY`** | Optional second Groq key, stored as a Render environment secret |
 | **`GROQ_API_KEY`** | `gsk_your_groq_api_key_from_console.groq.com` |
 | **`DATABASE_URL`** | `postgresql://your_user:your_password@your-neon-pooler.aws.neon.tech/neondb?sslmode=require` |
 | **`SUPABASE_URL`** | `https://your-project.supabase.co` |

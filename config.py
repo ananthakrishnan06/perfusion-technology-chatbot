@@ -138,6 +138,7 @@ class Settings(BaseSettings):
 
     # Groq API Configuration (Fallback / Alternative Provider)
     GROQ_API_KEY: str = Field(default="", description="API Key for Groq cloud API")
+    GROQ_BACKUP_API_KEY: str = Field(default="", description="Backup Groq credential for authentication failures")
     GROQ_MODEL: str = Field(
         default="llama-3.1-8b-instant",
         description="Supported Groq chat model (e.g., llama-3.1-8b-instant, openai/gpt-oss-20b, llama-3.3-70b-versatile)"
