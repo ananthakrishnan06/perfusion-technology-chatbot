@@ -173,7 +173,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   const urlParams = new URLSearchParams(window.location.search);
-  const authReady = finishGoogleRedirect().then(initAuth);
+  const authReady = finishGoogleRedirect().then(initAuth).catch(error => {
+    console.debug('Session initialization failed', error);
+  });
   checkHealth();
   setupKeyboardShortcuts();
   calculateBSA();
@@ -1625,7 +1627,7 @@ function calculateBSAAndFlow() {
 async function initAuth() {
   if (!document.getElementById('auth-container')) return;
   renderAuthUI();
-  await fetchAuthConfig();
+  fetchAuthConfig();
 
   try {
     const me = await apiFetch('/api/v1/auth/me');
@@ -2031,6 +2033,7 @@ function openLoginScreen() {
   const appShell = document.getElementById('app-shell');
   if (loginView) loginView.classList.remove('hidden');
   if (appShell) appShell.classList.add('hidden');
+  document.documentElement.classList.remove('auth-pending');
   if (window.lucide) lucide.createIcons();
 }
 
@@ -2039,6 +2042,7 @@ function bypassLoginToGuest() {
   const appShell = document.getElementById('app-shell');
   if (loginView) loginView.classList.add('hidden');
   if (appShell) appShell.classList.remove('hidden');
+  document.documentElement.classList.remove('auth-pending');
   if (window.lucide) lucide.createIcons();
 }
 

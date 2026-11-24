@@ -1,6 +1,15 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full overflow-hidden">
+<html lang="en" class="h-full overflow-hidden auth-pending">
 <head>
+  <style>
+    .auth-pending #view-login, .auth-pending #app-shell { display: none !important; }
+    #session-loading { display: none; }
+    .auth-pending #session-loading {
+      display: grid; position: fixed; inset: 0; place-content: center;
+      background: #faf8f4; color: #5c503c; text-align: center;
+      font: 1rem system-ui, sans-serif; z-index: 90;
+    }
+  </style>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
   <meta name="theme-color" content="#FAF8F4">
@@ -97,6 +106,9 @@
       </div>
     </div>
   </aside>
+
+  <div id="session-loading" role="status" aria-live="polite">Restoring your session…</div>
+  <noscript><style>#session-loading { display: none !important; }</style>Please enable JavaScript to open Perfusion AI.</noscript>
 
   <!-- DEDICATED FULL-VIEWPORT LOGIN INTERFACE (MATCHING EXACT EDITORIAL CLINICAL DESIGN) -->
   <div id="view-login" class="fixed inset-0 z-50 flex flex-col justify-between overflow-y-auto min-h-screen bg-warmbg text-darktext select-none" style="background-color: #FAF8F4; background-image: url('images/bg_perfusion.png?v=2'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
@@ -1436,6 +1448,6 @@
 
   <script src="config.js?v=3"></script>
   <script src="vendor/katex/katex.min.js"></script>
-  <script src="app.js?v=11"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>
