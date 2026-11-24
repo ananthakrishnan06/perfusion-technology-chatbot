@@ -28,6 +28,11 @@ function button(text, action) {
   });
   return control;
 }
+function primaryButton(text, action) {
+  const control = button(text, action);
+  control.classList.add("primary");
+  return control;
+}
 function notify(text) {
   toast.textContent = text;
   clearTimeout(toastTimer);
@@ -87,8 +92,9 @@ function table(headers, rows) {
   head.append(tr);
   for (const row of rows) {
     const line = tag("tr");
-    for (const value of row) {
+    for (const [index, value] of row.entries()) {
       const cell = tag("td");
+      cell.dataset.label = headers[index];
       cell.append(value instanceof Node ? value : String(value ?? "Unavailable"));
       line.append(cell);
     }
@@ -155,14 +161,30 @@ function chart(title, data, line = false) {
 async function overview() {
   const [metrics, usage] = await Promise.all([data("/admin/overview"),data("/admin/usage")]);
   const cards = tag("div"); cards.className = "cards";
-  const titles = {users:"Registered users",active:"People online",pdfs:"Uploaded PDFs",indexed:"PDFs ready to use",requests:"Questions asked",today:"Questions today",failed:"Questions without an answer"};
+  const titles = {users:"People registered",active:"People online",indexed:"PDFs ready to use",today:"Questions today"};
   for (const [key,label] of Object.entries(titles)) {
     const card = tag("div"); card.className = "card";
     card.append(tag("span",label),tag("strong",metrics[key] ?? "Unavailable")); cards.append(card);
   }
   const charts = tag("div"); charts.className = "charts";
-  charts.append(chart("Daily usage",usage.daily,true),chart("User activity",usage.active_users),chart("Document uploads",usage.uploads));
-  return [cards,charts];
+  charts.append(chart("Questions by day",usage.daily),chart("People active by day",usage.active_users),chart("PDFs added by day",usage.uploads));
+  const tasks = panel("Quick actions");
+  tasks.classList.add("quick-actions");
+  tasks.append(container(
+    primaryButton("Add study materials", () => {
+      content.replaceChildren(uploader());
+      dialog.showModal();
+    }),
+    button("Manage people", () => show("People")),
+    button("View usage", () => show("Usage reports"))
+  ));
+  const activity = tag("section");
+  activity.append(tag("h2", "Activity over the last 30 days"), charts);
+  const totals = tag("p", [metrics.pdfs,metrics.requests,metrics.failed].every(Number.isFinite)
+    ? metrics.pdfs+" PDFs uploaded · "+metrics.requests+" questions asked · "+metrics.failed+" without an answer"
+    : "");
+  totals.className = "overview-totals";
+  return [tasks,cards,activity,totals];
 }
 const categories = ["course","semester","subject","module","topic"];
 function categoryFields(doc = {}) {
@@ -213,14 +235,17 @@ function uploader(doc) {
   drop.ondragover=e=>{e.preventDefault();drop.classList.add("dragging");};
   drop.ondragleave=()=>drop.classList.remove("dragging");
   drop.ondrop=e=>{e.preventDefault();drop.classList.remove("dragging");choose(e.dataTransfer.files);};
-  box.append(fields,drop,status,progress,button(doc ? "Upload replacement" : "Add to library",async()=>{
+  const organize = tag("details");
+  organize.append(tag("summary", "Add categories (optional)"), fields);
+  box.append(drop,status,organize,progress,primaryButton(doc ? "Upload replacement" : "Add to library",async()=>{
     if (!selected.length || (doc && selected.length!==1)) throw new Error("Choose a PDF first.");
     progress.hidden=false;progress.value=0;
     try {
       const result=await upload(selected,values(),progress,doc?.document_id);
       notify(result.map(row=>row.original_filename+" · "+(documentStatus[row.processing_status] ?? "Check the library")).join(", "));
       if (dialog.open) dialog.close();
-      await refresh();
+      if (active === "Overview") await show("Study materials");
+      else await refresh();
     } finally { progress.hidden=true; }
   }));
   return box;
@@ -250,7 +275,10 @@ async function documents() {
     )])));
   }
   search.oninput=draw;subject.oninput=draw;status.onchange=draw;draw();
-  return [uploader(),container(searchLabel,subjectLabel,status),listing];
+  return [container(primaryButton("Add PDFs", () => {
+    content.replaceChildren(uploader());
+    dialog.showModal();
+  })),container(searchLabel,subjectLabel,status),listing];
 }
 async function users() {
   const rows=await data("/admin/users");
@@ -328,7 +356,7 @@ async function settings() {
   for(const [key,title] of Object.entries(keys)){
     const [label,input]=field(title,key,config[key],typeof config[key]==="boolean"?"checkbox":"number");fields.append(label);inputs[key]=input;
   }
-  return [fields,button("Save settings",async()=>{
+  return [fields,primaryButton("Save settings",async()=>{
     const values=Object.fromEntries(Object.entries(inputs).map(([key,input])=>[key,input.type==="checkbox"?input.checked:input.type==="number"?(input.value?Number(input.value):null):input.value]));
     await data("/admin/settings",{...config,...values},"PUT");notify("Settings saved.");
   })];
@@ -339,6 +367,7 @@ async function show(label,userId) {
   for(const entry of nav.children) entry.setAttribute("aria-current",entry.textContent===label?"page":"false");
   const skeleton=tag("div");skeleton.className="skeleton";skeleton.setAttribute("aria-label","Loading");
   root.replaceChildren(tag("h1",label),skeleton);
+  root.focus({preventScroll:true});
   const views=[overview,documents,users,sessions,analytics,logs,settings];
   try { const nodes=await views[labels.indexOf(label)](userId);if(version===viewVersion)root.replaceChildren(tag("h1",label),...nodes); }
   catch(error){if(version===viewVersion)root.replaceChildren(tag("h1",label),tag("p",error.message),button("Try again",()=>show(label,userId)));}
@@ -363,6 +392,16 @@ dialog.addEventListener("close",()=>{if(previewUrl){URL.revokeObjectURL(previewU
 document.querySelector("#menu").onclick=event=>{if(!nav.children.length)return;sidebar.hidden=!sidebar.hidden;event.currentTarget.setAttribute("aria-expanded",String(!sidebar.hidden));};
 const savedTheme=localStorage.getItem("perfusion_admin_theme");
 document.documentElement.dataset.theme=savedTheme||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
-document.querySelector("#theme").onclick=()=>{const theme=document.documentElement.dataset.theme==="dark"?"light":"dark";document.documentElement.dataset.theme=theme;localStorage.setItem("perfusion_admin_theme",theme);};
+const themeButton=document.querySelector("#theme");
+function updateThemeLabel() {
+  themeButton.textContent=document.documentElement.dataset.theme==="dark"?"Light mode":"Dark mode";
+}
+themeButton.onclick=()=>{
+  const theme=document.documentElement.dataset.theme==="dark"?"light":"dark";
+  document.documentElement.dataset.theme=theme;
+  localStorage.setItem("perfusion_admin_theme",theme);
+  updateThemeLabel();
+};
+updateThemeLabel();
 document.querySelector("#logout").onclick=async()=>{try{await api("/auth/logout",{});location.replace("/");}catch(error){notify(error.message);}};
 checkSession().catch(error=>{root.replaceChildren(tag("p",error.message),button("Try again",checkSession));});

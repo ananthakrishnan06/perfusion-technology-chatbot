@@ -5,14 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Perfusion AI · Administration</title>
-<link rel="stylesheet" href="/app/admin.css">
-<script defer src="/app/admin.js"></script>
+<link rel="stylesheet" href="/app/admin.css?v=2">
+<script defer src="/app/admin.js?v=2"></script>
 </head>
 <body>
-<header class="top"><button id="menu" aria-controls="sidebar" aria-expanded="true" aria-label="Toggle navigation">☰</button><strong>Perfusion AI</strong><span>Administration</span><button id="theme" aria-label="Toggle color theme">Theme</button></header>
+<header class="top">
+  <button id="menu" aria-controls="sidebar" aria-expanded="false">Menu</button>
+  <div class="brand"><span class="brand-mark" aria-hidden="true">P</span><strong>Perfusion AI</strong><span class="brand-label">Admin</span></div>
+  <button id="theme" aria-label="Toggle color theme">Dark mode</button>
+</header>
 <div class="layout">
-<aside id="sidebar" hidden><nav aria-label="Administration"></nav><button id="logout">Logout</button></aside>
-<main id="main"><p role="status">Checking your session…</p></main>
+<aside id="sidebar" hidden><nav aria-label="Administration"></nav><button id="logout">Sign out</button></aside>
+<main id="main" tabindex="-1"><p role="status">Checking your session…</p></main>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 <dialog id="dialog"><div id="dialog-body"></div><button id="dialog-close" type="button">Close</button></dialog>
