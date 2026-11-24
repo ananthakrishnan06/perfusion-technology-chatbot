@@ -260,7 +260,8 @@ class GroqClientWrapper:
         Stream chat completion tokens in real-time from the Groq API.
         Yields individual token strings as they are generated.
         """
-        models_to_try = self._get_models_to_try()[:2]
+        fast_model = "llama-3.1-8b-instant"
+        models_to_try = list(dict.fromkeys([fast_model, *self._get_models_to_try()]))[:2]
 
         for current_model in models_to_try:
             yielded_any = False

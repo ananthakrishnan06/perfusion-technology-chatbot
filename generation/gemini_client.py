@@ -208,7 +208,7 @@ class GeminiClientWrapper:
 
         config = types.GenerateContentConfig(
             http_options=types.HttpOptions(
-                timeout=int(min(self.timeout, 12) * 1000),
+                timeout=int(min(self.timeout, 25) * 1000),
                 retry_options=types.HttpRetryOptions(attempts=1),
             ),
             **config_kwargs,

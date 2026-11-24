@@ -428,9 +428,10 @@ class ChatService:
                 full_raw_answer.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
         except Exception as stream_err:
-            logger.error(f"Error during LLM streaming: {stream_err}")
-            yield f"data: {json.dumps({'type': 'error', 'error': str(stream_err)})}\n\n"
-            return
+            logger.warning("Answer streaming failed (%s)", type(stream_err).__name__)
+            if full_raw_answer:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'The answer stream was interrupted.'})}\n\n"
+                return
 
         complete_raw_text = "".join(full_raw_answer).strip()
         if not complete_raw_text:
