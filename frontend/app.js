@@ -2252,7 +2252,7 @@ async function handleEmailPasswordLogin(event) {
   const submitBtn = document.getElementById('btn-login-submit');
 
   const email = emailInput ? emailInput.value.trim() : '';
-  const password = passwordInput ? passwordInput.value.trim() : '';
+  const password = passwordInput ? passwordInput.value : '';
   const remember = rememberInput ? rememberInput.checked : true;
 
   if (!email || !password) {

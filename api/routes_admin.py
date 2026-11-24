@@ -89,11 +89,13 @@ class PasswordChange(BaseModel):
 
 @router.post("/password")
 def change_password(body: PasswordChange, admin=Depends(require_admin), db: Session = Depends(admin_db)):
-    user = db.get(User, admin.sub)
+    user = db.get(User, admin.sub, with_for_update=True)
     if not user or user.id != BOOTSTRAP_ID or not verify_password(body.current, user.password_hash):
         raise HTTPException(400, "Current password is incorrect.")
     if verify_password(body.replacement, user.password_hash):
         raise HTTPException(400, "Choose a different password.")
+    if not body.replacement.strip():
+        raise HTTPException(400, "Choose a password with at least one non-space character.")
     user.password_hash = hash_password(body.replacement)
     control = db.get(AccountControl, user.id)
     control.rotate_password = False

@@ -849,6 +849,8 @@ async def login_with_email(payload: EmailLoginRequest, request: Request, respons
         )
 
     if settings.ADMIN_BOOTSTRAP_EMAIL and email == settings.ADMIN_BOOTSTRAP_EMAIL.strip().lower():
+        from sqlalchemy.dialects.postgresql import insert as postgres_insert
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
         from storage.db import get_session_factory
         from storage.db_models import User
         from storage.admin_models import AccountControl
@@ -856,17 +858,24 @@ async def login_with_email(payload: EmailLoginRequest, request: Request, respons
         if not factory:
             raise HTTPException(503, "Administrator storage is unavailable.")
         with factory.begin() as db:
-            user = db.get(User, BOOTSTRAP_ID)
-            password_hash = user.password_hash if user else settings.ADMIN_BOOTSTRAP_PASSWORD_HASH
-            if not password_hash or not verify_password(password, password_hash):
-                raise HTTPException(401, "Invalid email or password.")
+            user = db.get(User, BOOTSTRAP_ID, with_for_update=True)
             if not user:
-                if db.query(User).filter_by(email=email).first():
+                initial_hash = settings.ADMIN_BOOTSTRAP_PASSWORD_HASH
+                if not initial_hash or not verify_password(payload.password, initial_hash):
+                    raise HTTPException(401, "Invalid email or password.")
+                insert = sqlite_insert if db.get_bind().dialect.name == "sqlite" else postgres_insert
+                table = User.__table__
+                created = db.execute(insert(table).values(
+                    id=BOOTSTRAP_ID, email=email, name="Administrator", role="admin",
+                    password_hash=initial_hash, email_verified=False
+                ).on_conflict_do_nothing().returning(table.c.id)).scalar_one_or_none()
+                if created:
+                    db.add(AccountControl(user_id=BOOTSTRAP_ID, rotate_password=True))
+                user = db.get(User, BOOTSTRAP_ID, with_for_update=True)
+                if not user:
                     raise HTTPException(409, "The bootstrap email is already registered.")
-                user = User(id=BOOTSTRAP_ID, email=email, name="Administrator", role="admin",
-                            password_hash=password_hash, email_verified=False)
-                db.add(user)
-                db.add(AccountControl(user_id=BOOTSTRAP_ID, rotate_password=True))
+            if not user.password_hash or not verify_password(payload.password, user.password_hash):
+                raise HTTPException(401, "Invalid email or password.")
             token = generate_session_token(BOOTSTRAP_ID, email, name=user.name)
             profile = UserProfile(sub=user.id, email=email, name=user.name, role="admin", token=token)
         return deliver_profile(profile, request, response)

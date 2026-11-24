@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi.testclient import TestClient
 
 from api.dependencies import get_container
@@ -12,20 +14,35 @@ def test_bootstrap_dashboard_password_rotation(test_client, monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_BOOTSTRAP_EMAIL", "bootstrap@example.invalid")
     monkeypatch.setattr(settings, "ADMIN_BOOTSTRAP_PASSWORD_HASH", hash_password("temporary-secret"))
     browser = TestClient(app, headers={"X-Perfusion-Session": "cookie"})
+    other_browser = TestClient(app, headers={"X-Perfusion-Session": "cookie"})
     assert browser.get("/api/v1/admin/page", follow_redirects=False).status_code == 303
     credentials = {"email": "bootstrap@example.invalid", "password": "temporary-secret"}
-    response = browser.post("/api/v1/auth/login", json=credentials)
-    assert response.status_code == 200, response.text
-    assert response.json()["role"] == "admin" and response.json()["password_change_required"]
+    def sign_in_both():
+        with ThreadPoolExecutor(2) as work:
+            attempts = [work.submit(client.post, "/api/v1/auth/login", json=credentials)
+                        for client in (browser, other_browser)]
+            responses = [attempt.result() for attempt in attempts]
+        assert [response.status_code for response in responses] == [200, 200]
+        return [response.json() for response in responses]
+
+    assert all(profile["role"] == "admin" and profile["password_change_required"] for profile in sign_in_both())
     assert browser.get("/api/v1/admin/page").status_code == 200
     assert browser.get("/api/v1/admin/users").status_code == 403
-    response = browser.post("/api/v1/admin/password", json={"current": "temporary-secret", "replacement": "new-long-admin-secret"})
+    response = browser.post("/api/v1/admin/password", json={"current": "temporary-secret", "replacement": " new-long-admin-secret "})
     assert response.status_code == 204
+    assert other_browser.get("/api/v1/auth/me").status_code == 401
     assert browser.post("/api/v1/auth/login", json=credentials).status_code == 401
-    credentials["password"] = "new-long-admin-secret"
+    credentials["password"] = " new-long-admin-secret "
     assert browser.post("/api/v1/auth/login", json=credentials).status_code == 200
     assert browser.get("/api/v1/admin/users").status_code == 200
     assert browser.post("/api/v1/admin/users/perfusion-bootstrap-admin", json={"action": "delete"}).status_code == 403
+
+    assert all(not profile["password_change_required"] for profile in sign_in_both())
+    assert browser.cookies.get("perfusion_session") != other_browser.cookies.get("perfusion_session")
+    assert browser.get("/api/v1/admin/users").status_code == 200
+    assert other_browser.get("/api/v1/admin/users").status_code == 200
+    assert other_browser.post("/api/v1/auth/logout").status_code == 200
+    assert browser.get("/api/v1/admin/users").status_code == 200
 
 
 def test_admin_tracks_and_revokes_user_session(test_client, verified_registration, admin_auth_headers):
