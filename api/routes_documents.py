@@ -1,5 +1,9 @@
+import re
 from typing import List
+
+from api.pdf_preview import render_pdf_page
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from config import settings
 from starlette.concurrency import run_in_threadpool
 from storage.admin_state import audit, read_options
@@ -8,7 +12,8 @@ from storage.knowledge_archive import archive_document, tombstone
 from schemas.auth import UserProfile
 from schemas.document import (
     DocumentDetailResponse,
-    DocumentListResponse,
+    LibraryDocument,
+    LibraryResponse,
     DocumentUploadBatchResponse,
 )
 from services.document_service import DocumentService
@@ -94,7 +99,7 @@ async def upload_documents(
 
 @router.get(
     "",
-    response_model=DocumentListResponse,
+    response_model=LibraryResponse,
     summary="List all indexed documents"
 )
 def list_documents(
@@ -106,7 +111,48 @@ def list_documents(
     page counts, chunk counts, and processing statuses.
     Requires verified user authentication.
     """
-    return doc_service.list_documents()
+    documents = [
+        LibraryDocument(**doc.model_dump(), preview_available=library_pdf_path(doc_service, doc.document_id) is not None)
+        for doc in doc_service.metadata_store.list_documents()
+        if doc.status == "indexed"
+    ]
+    documents.sort(key=lambda doc: doc.uploaded_at, reverse=True)
+    return LibraryResponse(documents=documents, total_documents=len(documents))
+
+
+def library_pdf_path(service, document_id):
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{1,100}", document_id):
+        return None
+    path = service.documents_dir / (document_id + ".pdf")
+    return path if path.is_file() else None
+
+
+@router.get("/{document_id}/preview", summary="Read a page from a published PDF")
+def preview_document(
+    document_id: str,
+    page: int = 1,
+    current_user: UserProfile = Depends(get_current_user),
+    doc_service: DocumentService = Depends(get_document_service),
+):
+    document = doc_service.metadata_store.get_document(document_id)
+    path = library_pdf_path(doc_service, document_id)
+    if not document or document.status != "indexed" or not path:
+        raise HTTPException(404, "This PDF is unavailable.")
+    return render_pdf_page(path, page)
+
+
+@router.get("/{document_id}/download", summary="Download a published PDF")
+def download_document(
+    document_id: str,
+    current_user: UserProfile = Depends(get_current_user),
+    doc_service: DocumentService = Depends(get_document_service),
+):
+    document = doc_service.metadata_store.get_document(document_id)
+    path = library_pdf_path(doc_service, document_id)
+    if not document or document.status != "indexed" or not path:
+        raise HTTPException(404, "This PDF is unavailable.")
+    return FileResponse(path, media_type="application/pdf", filename=document.filename,
+                        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.get(
@@ -124,7 +170,7 @@ def get_document(
     Requires verified user authentication.
     """
     doc_detail = doc_service.get_document(document_id)
-    if not doc_detail:
+    if not doc_detail or (doc_detail.document.status != "indexed" and current_user.role != "admin"):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Document with ID '{document_id}' not found."

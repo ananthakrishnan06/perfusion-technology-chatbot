@@ -212,6 +212,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   setInterval(checkBrowserSession, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state.user && state.activeView === 'library') loadDocuments();
+  });
 
   // Restore active conversation session if saved
   if (state.currentConversationId) {
@@ -1551,7 +1554,10 @@ async function loadDocuments() {
       tr.innerHTML = `
         <td class="py-3 px-4 font-medium text-neutral-900 flex items-center space-x-2">
           <i data-lucide="file-text" class="w-4 h-4 text-amber-700 flex-shrink-0"></i>
-          <span class="truncate max-w-sm" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
+          <div class="min-w-0">
+            <span class="block truncate max-w-56" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
+            <span class="block text-[11px] text-neutral-500">${escapeHtml([doc.course, doc.semester, doc.subject, doc.module, doc.topic].filter(Boolean).join(' · '))}</span>
+          </div>
         </td>
         <td class="py-3 px-4 font-mono-code text-neutral-600">${doc.total_pages || '—'} pages</td>
         <td class="py-3 px-4">
@@ -1561,13 +1567,38 @@ async function loadDocuments() {
           </span>
         </td>
         <td class="py-3 px-4 text-right">
-          <button type="button" class="text-xs font-mono-code text-amber-800 hover:text-amber-900 font-semibold underline underline-offset-2">
-            Explore
-          </button>
+          <div class="flex flex-wrap justify-end gap-x-3 gap-y-2 text-xs font-semibold text-amber-800">
+            ${doc.preview_available ? '<button type="button" data-action="read">Read PDF</button><button type="button" data-action="download">Download</button>' : ''}
+            <button type="button" data-action="ask">Ask about this</button>
+          </div>
         </td>
       `;
-      tr.querySelector('button').addEventListener('click', () =>
-        setQueryAndExecute('Summarize key principles in ' + doc.filename, doc.document_id, doc.filename));
+      tr.querySelector('[data-action="ask"]').addEventListener('click', () => {
+        for (const id of ['chat-subject', 'chat-module']) {
+          const filter = document.getElementById(id);
+          if (filter) filter.value = '';
+        }
+        setQueryAndExecute('Summarize key principles in ' + doc.filename, doc.document_id, doc.filename);
+      });
+      tr.querySelector('[data-action="read"]')?.addEventListener('click', () => openLibraryPdf(doc));
+      const download = tr.querySelector('[data-action="download"]');
+      download?.addEventListener('click', async () => {
+        download.disabled = true;
+        try {
+          const response = await apiFetch('/api/v1/documents/' + encodeURIComponent(doc.document_id) + '/download');
+          if (!response.ok) throw new Error('Download unavailable');
+          const url = URL.createObjectURL(await response.blob());
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = doc.filename;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 30000);
+        } catch {
+          showToastNotification('Couldn’t download this PDF. Please try again.', 'error');
+        } finally {
+          download.disabled = false;
+        }
+      });
       tbody.appendChild(tr);
     });
 
@@ -1582,6 +1613,56 @@ async function loadDocuments() {
       </tr>
     `;
   }
+}
+
+function openLibraryPdf(doc) {
+  const dialog = document.getElementById('library-pdf-dialog');
+  const title = document.getElementById('library-pdf-title');
+  const label = document.getElementById('library-pdf-page');
+  const image = document.getElementById('library-pdf-image');
+  const previous = document.getElementById('library-pdf-back');
+  const next = document.getElementById('library-pdf-next');
+  let page = 1;
+  let url;
+  const controller = new AbortController();
+  title.textContent = doc.filename;
+  dialog.addEventListener('close', () => {
+    controller.abort();
+    image.hidden = true;
+    image.removeAttribute('src');
+    if (url) URL.revokeObjectURL(url);
+  }, { once: true });
+
+  async function read(pageNumber) {
+    previous.disabled = next.disabled = true;
+    label.textContent = 'Loading page…';
+    try {
+      const response = await apiFetch('/api/v1/documents/' + encodeURIComponent(doc.document_id) + '/preview?page=' + pageNumber,
+        { signal: controller.signal });
+      if (!response.ok) throw new Error('Page unavailable');
+      const blob = await response.blob();
+      if (controller.signal.aborted) return;
+      if (url) URL.revokeObjectURL(url);
+      url = URL.createObjectURL(blob);
+      image.src = url;
+      image.alt = 'Page ' + pageNumber;
+      image.hidden = false;
+      page = pageNumber;
+      label.textContent = 'Page ' + page + ' of ' + doc.total_pages;
+    } catch {
+      if (!controller.signal.aborted) label.textContent = 'Couldn’t load page ' + pageNumber + '.';
+    } finally {
+      if (!controller.signal.aborted) {
+        previous.disabled = page <= 1;
+        next.disabled = page >= doc.total_pages;
+      }
+    }
+  }
+
+  previous.onclick = () => read(page - 1);
+  next.onclick = () => read(page + 1);
+  dialog.showModal();
+  read(page);
 }
 
 function populateSourceFilters() {

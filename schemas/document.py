@@ -68,3 +68,14 @@ class DocumentDetailResponse(BaseModel):
     document: DocumentMetadata
     sample_chunks: List[ChunkMetadata] = Field(default_factory=list)
 
+
+
+class LibraryDocument(DocumentMetadata):
+    """An indexed document as displayed in the user library."""
+
+    preview_available: bool = False
+
+
+class LibraryResponse(BaseModel):
+    documents: List[LibraryDocument]
+    total_documents: int

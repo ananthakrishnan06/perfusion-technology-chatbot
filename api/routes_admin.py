@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
+from api.pdf_preview import render_pdf_page
 from api.routes_auth import SESSION_MAX_AGE_SECONDS, get_optional_current_user, hash_password, require_admin, verify_password
 from storage.admin_state import BOOTSTRAP_ID, audit, options
 from storage.admin_models import AccountControl, AdminSetting, AppSession, AuditEvent, UsageEvent, utcnow
@@ -369,17 +370,8 @@ def pdf_path(service, doc_id):
 
 @router.get("/documents/{doc_id}/preview")
 def preview(doc_id: str, page: int = 1, admin=Depends(require_admin), service=Depends(get_document_service)):
-    import pymupdf
     _, path = pdf_path(service, doc_id)
-    try:
-        with pymupdf.open(path) as pdf:
-            if not 1 <= page <= len(pdf):
-                raise HTTPException(404, "Page not found.")
-            image = pdf[page-1].get_pixmap(dpi=90).tobytes("png")
-    except (RuntimeError, ValueError):
-        raise HTTPException(422, "The PDF page could not be rendered.")
-    return Response(image, media_type="image/png", headers={"Cache-Control": "no-store"})
-
+    return render_pdf_page(path, page)
 
 def index_pdf(service, db, admin, data, name, categories):
     from schemas.document import DocumentMetadata

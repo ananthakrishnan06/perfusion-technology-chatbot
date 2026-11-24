@@ -1046,7 +1046,7 @@
             <table class="w-full text-left text-xs min-w-[500px]">
               <thead class="bg-neutral-50 border-b border-subtleborder font-mono-code uppercase text-neutral-500">
                 <tr>
-                  <th class="py-3 px-4">Filename</th>
+                  <th class="py-3 px-4">Study material</th>
                   <th class="py-3 px-4">Total Pages</th>
                   <th class="py-3 px-4">Status</th>
                   <th class="py-3 px-4 text-right">Action</th>
@@ -1058,6 +1058,18 @@
             </table>
           </div>
         </div>
+        <dialog id="library-pdf-dialog" aria-labelledby="library-pdf-title" class="rounded-xl border border-subtleborder p-4 w-[min(94vw,50rem)] max-h-[90dvh] overflow-auto bg-white text-neutral-900">
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <h3 id="library-pdf-title" class="font-semibold break-all"></h3>
+            <form method="dialog"><button class="rounded border border-subtleborder px-2 py-1">Close</button></form>
+          </div>
+          <div class="flex items-center gap-3 mb-3 text-sm">
+            <button id="library-pdf-back" class="rounded border border-subtleborder px-2 py-1">Previous</button>
+            <p id="library-pdf-page" role="status" aria-live="polite"></p>
+            <button id="library-pdf-next" class="rounded border border-subtleborder px-2 py-1">Next</button>
+          </div>
+          <img id="library-pdf-image" hidden alt="PDF page" class="mx-auto max-w-full">
+        </dialog>
       </section>
 
       <!-- VIEW: CLINICAL CALCULATORS -->
@@ -1453,6 +1465,6 @@
 
   <script src="config.js?v=3"></script>
   <script src="vendor/katex/katex.min.js"></script>
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>
