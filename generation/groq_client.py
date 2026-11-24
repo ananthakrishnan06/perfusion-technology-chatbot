@@ -104,6 +104,8 @@ class GroqClientWrapper:
         from groq import AuthenticationError
 
         client = self._get_client()
+        if kwargs.get("stream"):
+            client = client.with_options(max_retries=0)
 
         def send(active_client):
             endpoint = active_client.audio.transcriptions if audio else active_client.chat.completions
@@ -258,18 +260,19 @@ class GroqClientWrapper:
         Stream chat completion tokens in real-time from the Groq API.
         Yields individual token strings as they are generated.
         """
-        models_to_try = self._get_models_to_try()
+        models_to_try = self._get_models_to_try()[:2]
 
         for current_model in models_to_try:
+            yielded_any = False
             try:
                 stream = self._create(
                     model=current_model,
                     messages=messages,
                     temperature=self.temperature if temperature is None else temperature,
                     max_tokens=self.max_tokens if max_tokens is None else max_tokens,
+                    timeout=min(self.timeout, 12.0),
                     stream=True
                 )
-                yielded_any = False
                 finish_reason = None
                 collected_tokens = []
                 for chunk in stream:
@@ -305,6 +308,7 @@ class GroqClientWrapper:
                                 messages=continuation_messages,
                                 temperature=self.temperature if temperature is None else temperature,
                                 max_tokens=min(2048, self.max_tokens if max_tokens is None else max_tokens),
+                                timeout=min(self.timeout, 12.0),
                                 stream=True
                             )
                             finish_reason = None
@@ -318,22 +322,16 @@ class GroqClientWrapper:
                                     if hasattr(cont_chunk.choices[0], "finish_reason") and cont_chunk.choices[0].finish_reason:
                                         finish_reason = cont_chunk.choices[0].finish_reason
                         except Exception as cont_err:
-                            logger.warning(f"Groq stream continuation error: {cont_err}")
-                            break
+                            raise GroqAPIError("Groq could not continue the answer stream.") from cont_err
 
                 if yielded_any:
                     return
             except GroqConfigurationError:
                 raise
             except Exception as e:
-                error_msg = str(e)
-                if "decommissioned" in error_msg.lower() or "not_found" in error_msg.lower() or "model_decommissioned" in error_msg.lower():
-                    logger.warning(f"Groq stream model {current_model} decommissioned/unavailable. Cascading to fallback model...")
-                elif "429" in error_msg or "rate_limit" in error_msg.lower():
-                    logger.warning(f"Groq stream model {current_model} rate limited. Cascading to fallback model...")
-                else:
-                    logger.warning(f"Groq stream error on {current_model}: {e}")
-                continue
+                if yielded_any or getattr(e, "status_code", None) not in (400, 404):
+                    raise GroqAPIError("Groq could not complete the answer stream.") from e
+                logger.warning("Groq stream model %s was rejected. Trying a fallback model.", current_model)
 
         error_msg = f"Groq stream failed to emit tokens across candidate models: {models_to_try}"
         logger.error(error_msg)

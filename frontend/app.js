@@ -976,6 +976,7 @@ async function sendChatMessage() {
 
     let streamedAnswer = "";
     let streamSucceeded = false;
+    let streamCompleted = false;
 
     // Create assistant message bubble
     assistantMsgEl.className = 'flex items-start space-x-3 max-w-3xl';
@@ -1047,6 +1048,7 @@ async function sendChatMessage() {
               streamErr.isStreamError = true;
               throw streamErr;
             } else if (eventData.type === 'done') {
+              streamCompleted = true;
               streamedAnswer = eventData.answer || streamedAnswer;
               if (streamedAnswer && streamedAnswer.trim()) {
                 proseDiv.innerHTML = renderMarkdownSafely(streamedAnswer);
@@ -1091,7 +1093,7 @@ async function sendChatMessage() {
           }
         }
 
-        if (streamedAnswer && streamedAnswer.trim().length >= 10) {
+        if (streamCompleted && streamedAnswer.trim()) {
           state.chatHistory.push({ role: 'user', content: query });
           state.chatHistory.push({ role: 'assistant', content: streamedAnswer });
           streamSucceeded = true;

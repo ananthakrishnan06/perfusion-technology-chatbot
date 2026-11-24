@@ -11,15 +11,19 @@ def test_groq_backup_after_rejected_key(monkeypatch, audio, stream):
     monkeypatch.setattr(settings, "GROQ_BACKUP_API_KEY", "test-backup")
     wrapper = GroqClientWrapper(api_key="test-primary")
     primary = Mock()
-    backup = primary.with_options.return_value
+    stream_client = Mock()
+    if stream:
+        primary.with_options.return_value = stream_client
+    active = stream_client if stream else primary
+    backup = active.with_options.return_value
     wrapper._client = primary
     request = httpx.Request("POST", "https://example.invalid")
     rejection = AuthenticationError("Rejected", response=httpx.Response(401, request=request), body=None)
-    first = primary.audio.transcriptions if audio else primary.chat.completions
+    first = active.audio.transcriptions if audio else active.chat.completions
     second = backup.audio.transcriptions if audio else backup.chat.completions
     first.create.side_effect = rejection
     assert wrapper._create(audio=audio, stream=stream) is second.create.return_value
-    primary.with_options.assert_called_once_with(api_key="test-backup")
+    active.with_options.assert_called_once_with(api_key="test-backup")
     second.create.assert_called_once_with(stream=stream)
     second.create.side_effect = rejection
     with pytest.raises(GroqConfigurationError):

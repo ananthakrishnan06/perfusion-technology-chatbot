@@ -3,6 +3,19 @@ from unittest.mock import MagicMock
 import pytest
 
 
+def test_short_streamed_answer_does_not_trigger_sync_fallback(test_client, monkeypatch):
+    from api.dependencies import get_container
+    generator = get_container().answer_generator
+    monkeypatch.setattr(generator, "stream_answer", lambda **kwargs: iter(["ECMO supports gas exchange."]))
+    fallback = MagicMock(side_effect=AssertionError("Short answers should only be generated once"))
+    monkeypatch.setattr(generator, "generate_answer", fallback)
+    response = test_client.post("/api/v1/chat/stream", json={"question": "What is ECMO?"})
+    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+    assert events[-1]["type"] == "done"
+    assert events[-1]["answer"] == "ECMO supports gas exchange."
+    fallback.assert_not_called()
+
+
 def test_chat_stream_endpoint(test_client, sample_perfusion_pdf_bytes, admin_auth_headers, monkeypatch):
     """Test POST /api/v1/chat/stream returns valid Server-Sent Events (SSE)."""
     # 1. Ingest document

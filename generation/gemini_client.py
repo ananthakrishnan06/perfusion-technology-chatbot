@@ -206,9 +206,15 @@ class GeminiClientWrapper:
         if system_instruction:
             config_kwargs["system_instruction"] = system_instruction
 
-        config = types.GenerateContentConfig(**config_kwargs)
+        config = types.GenerateContentConfig(
+            http_options=types.HttpOptions(
+                timeout=int(min(self.timeout, 12) * 1000),
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
+            **config_kwargs,
+        )
 
-        models_to_try = self._get_models_to_try()
+        models_to_try = self._get_models_to_try()[:2]
         last_error = None
 
         for model_name in models_to_try:
@@ -228,11 +234,8 @@ class GeminiClientWrapper:
             except Exception as e:
                 last_error = e
                 logger.warning(f"Gemini streaming error with model '{model_name}': {e}.")
-                if tokens_emitted >= 50:
-                    # Emitted substantial content before disconnect; stop cleanly
-                    return
-                # If zero or trivial tokens were emitted, try next fallback model
-                continue
+                if tokens_emitted or getattr(e, "code", None) != 404:
+                    raise GeminiAPIError("Gemini could not complete the answer stream.") from e
 
         error_msg = f"Gemini streaming failed across models {models_to_try}: {last_error}"
         logger.error(error_msg)

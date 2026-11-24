@@ -433,7 +433,7 @@ class ChatService:
             return
 
         complete_raw_text = "".join(full_raw_answer).strip()
-        if not full_raw_answer or len(complete_raw_text) < 50:
+        if not complete_raw_text:
             logger.warning("Streaming yielded insufficient content. Attempting synchronous completion fallback...")
             try:
                 sync_resp = self.answer_generator.generate_answer(

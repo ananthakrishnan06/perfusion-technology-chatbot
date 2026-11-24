@@ -67,7 +67,7 @@ class Settings(BaseSettings):
 
     # LLM Provider Configuration
     PRIMARY_LLM_PROVIDER: str = Field(
-        default="gemini",
+        default="groq",
         description="Primary LLM provider to use: 'gemini' or 'groq'. Falls back automatically to the other provider on failure."
     )
 

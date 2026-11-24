@@ -184,9 +184,8 @@ class AnswerGenerator:
         if len(q_words) >= 15 and not re.search(r"^\s*(?:make|explain|break|summarize|simplify)\s+(?:the\s+above|it|this|that)", clean_q, re.IGNORECASE):
             return clean_q
 
-        # If question is self-contained (has >= 4 words and lacks backward-referencing pronouns/directives),
-        # return it directly. This avoids a 500-1000ms sequential Groq LLM network call!
-        if not has_pronoun and not has_directive and len(q_words) >= 4:
+        # Standalone terms such as "Define ECMO" can go straight to retrieval.
+        if not has_pronoun and not has_directive:
             return clean_q
 
         # Construct prompt for fast Groq query contextualization only when truly needed

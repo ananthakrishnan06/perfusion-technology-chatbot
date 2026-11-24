@@ -139,6 +139,7 @@ def build_chat_messages(
                 "DIRECTIVE (HIGH-YIELD CLINICAL RESPONSE):\n"
                 "- STRICT PDF CONFINEMENT: Answer EXCLUSIVELY and SOLELY from the provided PDF document excerpts above. Do NOT incorporate any information from outside the PDFs. If the excerpts do not contain the answer, state that the indexed documents do not provide this information.\n"
                 "- EXECUTIVE SUMMARY: Begin with a concise 1–2 sentence Clinical Summary or authoritative definition derived from the excerpts.\n"
+                "- LENGTH: Honor explicit requests for a short answer. For a simple question, give the direct answer and only the essential supporting points.\n"
                 "- STRUCTURED SECTIONS: Organize the response using clear bold headings (e.g., Core Principles, Clinical Targets & Values, Circuit Conduct & Protocols, Precautions & Safety).\n"
                 "- POINT-WISE RIGOR: Present facts, physiological mechanisms, and guidelines in clear, high-yield bullet points.\n"
                 "- COMPARISONS & CALCULATIONS: When comparing two modalities, include a Markdown comparison table. If calculations are requested, provide the exact formula, variable units, and a worked example.\n"
