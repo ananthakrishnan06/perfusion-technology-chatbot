@@ -4,7 +4,7 @@
 // STRICT SECURITY POLICY: API calls, authentication tokens, private chat histories,
 // and user data are NEVER stored in CacheStorage.
 
-const CACHE_NAME = 'perfusion-ai-session-v5';
+const CACHE_NAME = 'perfusion-ai-session-v6';
 
 // Static Shell Assets to Pre-cache
 const PRECACHE_ASSETS = [
@@ -12,7 +12,8 @@ const PRECACHE_ASSETS = [
   '/index.html',
   '/style.css?v=20261018_v10',
   '/config.js?v=3',
-  '/app.js?v=5',
+  '/vendor/katex/katex.min.js',
+  '/app.js?v=6',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

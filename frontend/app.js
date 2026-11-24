@@ -629,7 +629,7 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, m => map[m]);
 }
 
-function renderMarkdownSafely(text) {
+function markdownToSafeHtml(text) {
   if (!text) return '';
   let rawHtml = '';
   try {
@@ -652,6 +652,57 @@ function renderMarkdownSafely(text) {
     });
   }
   return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
+function renderMarkdownSafely(text, streaming = false) {
+  if (!text || !window.katex || !/[$\\]/.test(text)) return markdownToSafeHtml(text);
+  // Protect formulas from Markdown's escape and emphasis rules. Only restore
+  // them inside text nodes, after sanitizing the surrounding Markdown.
+  let prefix = 'PERFUSIONMATH';
+  while (text.includes(prefix)) prefix += 'X';
+  const formulas = [];
+  const marker = (tex, displayMode) => {
+    formulas.push({ tex, displayMode });
+    return prefix + formulas.length + 'END';
+  };
+  const parts = /(`+)[\s\S]*?\1|\\\$|\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$(?![\s$])((?:\\.|[^$\\\n])+?)(?<!\s)\$(?!\d)/g;
+  let prepared = text.replace(parts, (whole, code, block, brackets, parens, inline) => {
+    const tex = block ?? brackets ?? parens ?? inline;
+    return tex === undefined ? whole : marker(tex, block !== undefined || brackets !== undefined);
+  });
+  if (streaming) {
+    // A token can arrive halfway through a formula. Leave prices like $25 visible.
+    prepared = prepared.replace(/(?<![\\$])(?:\$\$|\\\[|\\\(|\$(?=[A-Za-z\\]))[^$\x60\n]*$/, '…');
+  }
+  const html = markdownToSafeHtml(prepared);
+  if (!formulas.length) return html;
+  const container = document.createElement('template');
+  container.innerHTML = html;
+  const walker = document.createTreeWalker(container.content, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) {
+    if (walker.currentNode.nodeValue.includes(prefix)) nodes.push(walker.currentNode);
+  }
+  const pattern = new RegExp(prefix + '(\\d+)END', 'g');
+  for (const node of nodes) {
+    const pieces = node.nodeValue.split(pattern);
+    const fragment = document.createDocumentFragment();
+    pieces.forEach((piece, index) => {
+      if (index % 2 === 0) return fragment.append(piece);
+      const formula = formulas[Number(piece) - 1];
+      if (!formula) return fragment.append(prefix + piece + 'END');
+      const { tex, displayMode } = formula;
+      const span = document.createElement('span');
+      try {
+        window.katex.render(tex, span, { output: 'mathml', displayMode, trust: false, maxSize: 10 });
+      } catch {
+        span.textContent = tex;
+      }
+      fragment.append(span);
+    });
+    node.replaceWith(fragment);
+  }
+  return container.innerHTML;
 }
 window.renderMarkdownSafely = renderMarkdownSafely;
 
@@ -989,7 +1040,7 @@ async function sendChatMessage() {
               }
             } else if (eventData.type === 'token') {
               streamedAnswer += eventData.content;
-              proseDiv.innerHTML = renderMarkdownSafely(streamedAnswer);
+              proseDiv.innerHTML = renderMarkdownSafely(streamedAnswer, true);
               scrollChatToBottom();
             } else if (eventData.type === 'error') {
               const streamErr = new Error(eventData.error || 'Stream error from model');
