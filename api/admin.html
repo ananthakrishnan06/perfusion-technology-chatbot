@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Perfusion AI · Administration</title>
+<link rel="stylesheet" href="/app/admin.css">
+<script defer src="/app/admin.js"></script>
+</head>
+<body>
+<header class="top"><button id="menu" aria-controls="sidebar" aria-expanded="true" aria-label="Toggle navigation">☰</button><strong>Perfusion AI</strong><span>Administration</span><button id="theme" aria-label="Toggle color theme">Theme</button></header>
+<div class="layout">
+<aside id="sidebar" hidden><nav aria-label="Administration"></nav><button id="logout">Logout</button></aside>
+<main id="main"><p role="status">Checking your session…</p></main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="dialog"><div id="dialog-body"></div><button id="dialog-close" type="button">Close</button></dialog>
+</body>
+</html>

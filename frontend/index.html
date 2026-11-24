@@ -107,6 +107,7 @@
     </div>
   </aside>
 
+  <div id="maintenance-banner" hidden role="status" style="position:fixed;z-index:70;left:0;right:0;bottom:0;text-align:center;padding:12px;background:#faf0df;color:#51371d">Perfusion AI is under maintenance. Please check back soon.</div>
   <div id="session-loading" role="status" aria-live="polite">Restoring your session…</div>
   <noscript><style>#session-loading { display: none !important; }</style>Please enable JavaScript to open Perfusion AI.</noscript>
 
@@ -551,6 +552,10 @@
           </div>
         </div>
 
+        <div id="chat-source-filters" class="hidden flex flex-wrap gap-2 text-xs">
+          <select id="chat-subject" aria-label="Filter source subject"><option value="">All subjects</option></select>
+          <select id="chat-module" aria-label="Filter source module"><option value="">All modules</option></select>
+        </div>
         <!-- Chat History Scrollable Area (ONLY THIS SCROLLS IN CHAT) -->
         <div id="chat-messages" class="flex-1 overflow-y-auto py-3 sm:py-4 space-y-3 sm:space-y-4 pr-1 min-h-0">
           <!-- Initial Assistant Greeting -->
@@ -1448,6 +1453,6 @@
 
   <script src="config.js?v=3"></script>
   <script src="vendor/katex/katex.min.js"></script>
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

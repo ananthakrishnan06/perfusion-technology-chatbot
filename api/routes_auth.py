@@ -345,11 +345,29 @@ async def supabase_request(
         return 503, {"error": f"Supabase connection error: {str(e)}"}
 
 
+from storage.admin_state import BOOTSTRAP_ID, enforce_session, read_options
+
+
+def session_issued_at(token):
+    if token.startswith("v2."):
+        claims, stamp = session_signer.loads(token[3:], return_timestamp=True)
+        return datetime.fromtimestamp(claims.get("iat", stamp.timestamp()), timezone.utc).replace(tzinfo=None)
+    # The identity provider has already verified this access token.
+    import base64
+    import json
+    try:
+        segment = token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)))
+        return datetime.fromtimestamp(claims["iat"], timezone.utc).replace(tzinfo=None)
+    except (ValueError, KeyError, TypeError, IndexError, OverflowError):
+        return None
+
+
 def generate_session_token(sub: str, email: str, *, verified: bool = False, name: str = "", role: str = "",
                            picture=None, given_name=None, family_name=None) -> str:
     claims = {"sub": sub, "email": email, "verified": verified, "name": name,
               "picture": picture, "given_name": given_name, "family_name": family_name,
-              "role": display_role(role), "nonce": secrets.token_urlsafe(16)}
+              "role": display_role(role), "iat": datetime.now(timezone.utc).timestamp(), "nonce": secrets.token_urlsafe(16)}
     return "v2." + session_signer.dumps(claims)
 
 
@@ -396,8 +414,12 @@ def _persist_user_to_db(profile: UserProfile):
                 user.email = profile.email
                 if profile.picture:
                     user.picture = profile.picture
+                if profile.role == "admin":
+                    user.role = "admin"
                 user.last_login_at = datetime.now(timezone.utc)
             else:
+                if read_options().get("registrations") is False:
+                    raise HTTPException(403, "New registrations are disabled.")
                 user = User(
                     id=profile.sub,
                     email=profile.email,
@@ -410,8 +432,10 @@ def _persist_user_to_db(profile: UserProfile):
                 )
                 db.add(user)
             db.commit()
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"Note on user persistence to PostgreSQL: {e}")
+        logger.warning("User persistence failed (%s)", type(e).__name__)
 
 
 async def resolve_user_from_token(token: str) -> Optional[UserProfile]:
@@ -426,7 +450,8 @@ async def resolve_user_from_token(token: str) -> Optional[UserProfile]:
         return UserProfile(sub=claims["sub"], email=email, name=claims["name"] or email.split("@")[0],
                            picture=claims.get("picture"), given_name=claims.get("given_name"),
                            family_name=claims.get("family_name"),
-                           role=account_role(email, claims["verified"], claims["role"]), token=token)
+                           role=("admin" if claims["sub"] == BOOTSTRAP_ID and email == settings.ADMIN_BOOTSTRAP_EMAIL.strip().lower()
+                                 else account_role(email, claims["verified"], claims["role"])), token=token)
     if is_supabase_configured() and token.count(".") == 2:
         code, user = await supabase_request("GET", "/user", bearer_token=token)
         if code == 200:
@@ -449,6 +474,7 @@ def browser_session(request):
 
 
 def deliver_profile(profile, request, response):
+    profile = enforce_session(profile, profile.token, request, session_issued_at(profile.token), login=True)
     response.headers["Cache-Control"] = "no-store"
     if browser_session(request):
         response.set_cookie(SESSION_COOKIE, profile.token, httponly=True, secure=request.url.scheme == "https" or request.url.hostname not in {"localhost", "127.0.0.1", "testserver", "::1"},
@@ -472,6 +498,12 @@ async def get_optional_current_user(request: Request, authorization: Optional[st
     profile = await resolve_user_from_token(token)
     if not profile:
         raise HTTPException(401, "Invalid or expired session.")
+    profile = enforce_session(profile, token, request, session_issued_at(token))
+    request.state.user_id = profile.sub
+    if profile.password_change_required and request.url.path not in {
+        settings.API_PREFIX + "/auth/me", settings.API_PREFIX + "/admin/password", settings.API_PREFIX + "/admin/page"
+    }:
+        raise HTTPException(403, "Change your initial password before continuing.")
     if not authorization:
         return profile.model_copy(update={"token": None})
     return profile
@@ -499,7 +531,10 @@ async def get_auth_config():
     supa_key = settings.SUPABASE_ANON_KEY.strip() if getattr(settings, "SUPABASE_ANON_KEY", None) else ""
     client_id = settings.GOOGLE_CLIENT_ID.strip() if settings.GOOGLE_CLIENT_ID else ""
     supa_enabled = bool(supa_url and supa_key)
+    controls = read_options()
     return AuthConfigResponse(
+        maintenance=controls.get("maintenance", False),
+        registrations=controls.get("registrations", True),
         supabase_url=supa_url,
         supabase_anon_key=supa_key,
         supabase_enabled=supa_enabled,
@@ -709,6 +744,18 @@ async def me_endpoint(current_user: UserProfile = Depends(get_current_user)):
 async def logout(request: Request, response: Response, authorization: Optional[str] = Header(None)):
     token = request_token(request, authorization)
     if token and await resolve_user_from_token(token):
+        from storage.admin_state import audit, digest
+        from storage.admin_models import AppSession
+        from storage.db import get_session_factory
+        profile = await resolve_user_from_token(token)
+        factory = get_session_factory()
+        if profile and factory:
+            with factory.begin() as db:
+                row = db.query(AppSession).filter_by(digest=digest(token)).first()
+                if row:
+                    row.revoked = True
+                if profile.role == "admin":
+                    audit(db, profile.sub, "admin_logout")
         revoke_token(token)
         if is_supabase_configured() and not token.startswith("v2."):
             await supabase_request("POST", "/logout", bearer_token=token)
@@ -801,6 +848,29 @@ async def login_with_email(payload: EmailLoginRequest, request: Request, respons
             detail="Email and password are required."
         )
 
+    if settings.ADMIN_BOOTSTRAP_EMAIL and email == settings.ADMIN_BOOTSTRAP_EMAIL.strip().lower():
+        from storage.db import get_session_factory
+        from storage.db_models import User
+        from storage.admin_models import AccountControl
+        factory = get_session_factory()
+        if not factory:
+            raise HTTPException(503, "Administrator storage is unavailable.")
+        with factory.begin() as db:
+            user = db.get(User, BOOTSTRAP_ID)
+            password_hash = user.password_hash if user else settings.ADMIN_BOOTSTRAP_PASSWORD_HASH
+            if not password_hash or not verify_password(password, password_hash):
+                raise HTTPException(401, "Invalid email or password.")
+            if not user:
+                if db.query(User).filter_by(email=email).first():
+                    raise HTTPException(409, "The bootstrap email is already registered.")
+                user = User(id=BOOTSTRAP_ID, email=email, name="Administrator", role="admin",
+                            password_hash=password_hash, email_verified=False)
+                db.add(user)
+                db.add(AccountControl(user_id=BOOTSTRAP_ID, rotate_password=True))
+            token = generate_session_token(BOOTSTRAP_ID, email, name=user.name)
+            profile = UserProfile(sub=user.id, email=email, name=user.name, role="admin", token=token)
+        return deliver_profile(profile, request, response)
+
     # 1. Supabase Authentication
     if is_supabase_configured():
         status_code, resp_data = await supabase_request(
@@ -810,7 +880,7 @@ async def login_with_email(payload: EmailLoginRequest, request: Request, respons
         )
         if status_code != 200:
             err_msg = resp_data.get("error_description") or resp_data.get("msg") or resp_data.get("message") or "Invalid login credentials."
-            logger.warning(f"Supabase login failed for {email}: {err_msg}")
+            logger.warning("Supabase login rejected")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password."
@@ -820,7 +890,7 @@ async def login_with_email(payload: EmailLoginRequest, request: Request, respons
         access_token = resp_data.get("access_token")
         profile = supabase_profile(user_info, access_token)
         _persist_user_to_db(profile)
-        logger.info(f"User authenticated via Supabase: {email} ({profile.name})")
+        logger.info("User authenticated via Supabase (%s)", profile.sub)
         return deliver_profile(profile, request, response)
 
     # 2. Local Database Authentication (when Supabase is pending setup)
@@ -888,7 +958,7 @@ async def login_with_email(payload: EmailLoginRequest, request: Request, respons
         token=session_token
     )
     _persist_user_to_db(profile)
-    logger.info(f"User signed in: {email} ({name})")
+    logger.info("User signed in (%s)", sub)
     return deliver_profile(profile, request, response)
 
 
@@ -913,6 +983,10 @@ def registration_proof(payload, code):
 
 @router.post("/register", response_model=UserProfile | RegistrationPending)
 async def register_account(payload: RegisterRequest, request: Request, response: Response):
+    if read_options().get("registrations") is False:
+        raise HTTPException(403, "New registrations are disabled.")
+    if settings.ADMIN_BOOTSTRAP_EMAIL and payload.email.strip().lower() == settings.ADMIN_BOOTSTRAP_EMAIL.strip().lower():
+        raise HTTPException(409, "This email is reserved.")
     check_register_rate_limit(request.client.host if request.client else "unknown")
     email = payload.email.strip().lower()
     name = payload.name.strip()

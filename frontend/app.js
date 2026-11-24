@@ -96,6 +96,10 @@ function setAuthenticatedUser(newUser) {
   const isDifferentUser = previousSub && previousSub !== newUser.sub;
 
   state.user = newUser;
+  if (newUser.role === 'admin') {
+    window.location.replace('/api/v1/admin/page');
+    return;
+  }
 
   if (isDifferentUser) {
     // Clear in-memory & DOM state from previous account
@@ -193,6 +197,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await authReady;
   // Control initial view based on auth session
   if (state.user && state.user.authenticated) {
+    if (state.user.role === 'admin') return;
     bypassLoginToGuest();
     const requestedView = urlParams.get('view');
     if (requestedView) {
@@ -205,6 +210,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else {
     openLoginScreen();
   }
+
+  setInterval(checkBrowserSession, 60000);
 
   // Restore active conversation session if saved
   if (state.currentConversationId) {
@@ -304,6 +311,7 @@ async function refreshBackendData() {
     if (docRes.ok) {
       const docData = await docRes.json();
       state.documents = docData.documents || [];
+      populateSourceFilters();
       if (typeof loadDocuments === 'function') {
         loadDocuments();
       }
@@ -970,6 +978,10 @@ async function sendChatMessage() {
       top_k: isLongOrMultiPart ? 8 : 5,
       conversation_history: payloadHistory
     };
+    const subject = document.getElementById('chat-subject')?.value;
+    const module = document.getElementById('chat-module')?.value;
+    if (subject) payload.subject = subject;
+    if (module) payload.module = module;
     if (state.activeDocId) {
       payload.document_ids = [state.activeDocId];
     }
@@ -1306,6 +1318,7 @@ function renderCitationsHtml(citations) {
       >
         <i data-lucide="book-open" class="w-3 h-3 text-amber-700 flex-shrink-0"></i>
         <span class="truncate max-w-[130px] font-medium">${escapeHtml(shortSrc)}</span>
+        ${c.module ? `<span>${escapeHtml(c.module)}</span>` : ''}
         ${pageText ? `<span class="text-neutral-400 font-semibold">${escapeHtml(pageText)}</span>` : ''}
       </button>
     `;
@@ -1518,6 +1531,7 @@ async function loadDocuments() {
     if (!res.ok) throw new Error('Failed to fetch documents');
     const data = await res.json();
     state.documents = data.documents || [];
+    populateSourceFilters();
 
     if (state.documents.length === 0) {
       tbody.innerHTML = `
@@ -1568,6 +1582,22 @@ async function loadDocuments() {
       </tr>
     `;
   }
+}
+
+function populateSourceFilters() {
+  const filters = document.getElementById('chat-source-filters');
+  if (!filters) return;
+  let available = false;
+  for (const key of ['subject', 'module']) {
+    const select = document.getElementById('chat-' + key);
+    const previous = select.value;
+    const values = [...new Set(state.documents.filter(doc => doc.status === 'indexed').map(doc => doc[key]).filter(Boolean))].sort();
+    select.replaceChildren(new Option(key === 'subject' ? 'All subjects' : 'All modules', ''));
+    for (const value of values) select.add(new Option(value, value));
+    if (values.includes(previous)) select.value = previous;
+    available ||= values.length > 0;
+  }
+  filters.classList.toggle('hidden', !available);
 }
 
 async function refreshLibrary() {
@@ -1624,6 +1654,19 @@ function calculateBSAAndFlow() {
 // 10. GOOGLE AUTHENTICATION & USER PROFILE
 // ==========================================
 
+async function checkBrowserSession() {
+  if (!state.user || document.visibilityState === 'hidden') return;
+  try {
+    const response = await apiFetch('/api/v1/auth/me');
+    if (response.status === 401) {
+      clearAuthenticatedUser();
+      openLoginScreen();
+    }
+  } catch (error) {
+    console.debug('Session check unavailable', error);
+  }
+}
+
 async function initAuth() {
   if (!document.getElementById('auth-container')) return;
   renderAuthUI();
@@ -1653,6 +1696,11 @@ async function fetchAuthConfig() {
     const res = await apiFetch('/api/v1/auth/config');
     if (res.ok) {
       state.authConfig = await res.json();
+      const maintenance = document.getElementById('maintenance-banner');
+      if (maintenance) maintenance.hidden = !state.authConfig.maintenance;
+      for (const link of document.querySelectorAll("[onclick*=register]")) {
+        link.hidden = state.authConfig.registrations === false;
+      }
       updateAuthModalConfigUI(false);
       initializeGoogleGSI();
       initSupabaseClient();
@@ -1860,6 +1908,11 @@ async function saveSupabaseCredentials() {
 
     if (res.ok) {
       state.authConfig = await res.json();
+      const maintenance = document.getElementById('maintenance-banner');
+      if (maintenance) maintenance.hidden = !state.authConfig.maintenance;
+      for (const link of document.querySelectorAll("[onclick*=register]")) {
+        link.hidden = state.authConfig.registrations === false;
+      }
       updateAuthModalConfigUI();
       initSupabaseClient();
       showAuthNotification('Supabase Authentication configured and activated!');
@@ -2138,29 +2191,6 @@ async function handleEmailPasswordLogin(event) {
       "Verifying credentials..."
     );
 
-    // 1. If Supabase client is initialized on frontend, authenticate directly
-    if (window.supabaseClient && state.authConfig?.supabase_enabled) {
-      try {
-        const { data, error } = await window.supabaseClient.auth.signInWithPassword({
-          email: email,
-          password: password
-        });
-
-        if (!error && data?.session?.access_token) {
-          const user = await syncSupabaseSession(data.session.access_token);
-          if (user) return;
-        } else if (error) {
-          // If Supabase returned an explicit authentication error, show message
-          hideLoginLoading();
-          showToastNotification(error.message || 'Supabase authentication failed.', 'error');
-          return;
-        }
-      } catch (clientErr) {
-        console.warn('Frontend Supabase sign-in exception, falling back to backend:', clientErr);
-      }
-    }
-
-    // 2. Authenticate through backend endpoint (proxy to Supabase or DB)
     const res = await apiFetch('/api/v1/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

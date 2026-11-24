@@ -29,6 +29,8 @@ class ChatRequest(BaseModel):
         default=None,
         description="Optional list of document IDs to restrict search to. Searches all active documents if omitted or empty."
     )
+    subject: Optional[str] = Field(default=None, max_length=100)
+    module: Optional[str] = Field(default=None, max_length=100)
     top_k: int = Field(default=5, ge=1, le=20, description="Number of passages to retrieve for grounding")
     conversation_history: Optional[List[ChatMessage]] = Field(
         default=None,
@@ -53,6 +55,7 @@ class ChatRequest(BaseModel):
 class Citation(BaseModel):
     """Source citation referencing an authentic passage from an uploaded PDF."""
     source: str = Field(..., description="Original PDF filename")
+    module: Optional[str] = None
     page: int = Field(..., ge=1, description="Original 1-based PDF page number")
     chunk_id: str = Field(..., description="Unique chunk identifier")
     excerpt: str = Field(..., description="Exact supporting text excerpt from the document")

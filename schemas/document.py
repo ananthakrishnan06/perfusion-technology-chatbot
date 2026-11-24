@@ -31,6 +31,11 @@ class DocumentMetadata(BaseModel):
         description="ISO timestamp of upload"
     )
     status: str = Field(default="indexed", description="Processing status: indexed, failed, processing")
+    course: str = ""
+    semester: str = ""
+    subject: str = ""
+    module: str = ""
+    topic: str = ""
     error_message: Optional[str] = Field(None, description="Error details if processing failed")
 
 

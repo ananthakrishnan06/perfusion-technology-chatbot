@@ -36,7 +36,8 @@ class MetadataStore:
                     self.chunks.pop(cid, None)
 
             self.documents[doc_meta.document_id] = doc_meta
-            self.hash_to_doc_id[doc_meta.file_hash] = doc_meta.document_id
+            if doc_meta.status == "indexed":
+                self.hash_to_doc_id[doc_meta.file_hash] = doc_meta.document_id
 
             chunk_ids = []
             for chunk in chunks:
@@ -92,7 +93,8 @@ class MetadataStore:
                 return []
 
             doc = self.documents.pop(doc_id)
-            self.hash_to_doc_id.pop(doc.file_hash, None)
+            if self.hash_to_doc_id.get(doc.file_hash) == doc_id:
+                self.hash_to_doc_id.pop(doc.file_hash, None)
 
             chunk_ids = self.doc_to_chunk_ids.pop(doc_id, [])
             for cid in chunk_ids:
@@ -159,7 +161,8 @@ class MetadataStore:
                     try:
                         doc_obj = DocumentMetadata.model_validate(doc_dict)
                         self.documents[doc_id] = doc_obj
-                        self.hash_to_doc_id[doc_obj.file_hash] = doc_id
+                        if doc_obj.status == "indexed":
+                            self.hash_to_doc_id[doc_obj.file_hash] = doc_id
                         self.doc_to_chunk_ids[doc_id] = []
                     except Exception as err:
                         logger.warning(f"Skipping corrupted document entry {doc_id}: {err}")

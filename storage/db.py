@@ -52,6 +52,7 @@ def init_db() -> bool:
     try:
         # Import models so Base has metadata registered
         import storage.db_models  # noqa
+        import storage.admin_models  # noqa
         Base.metadata.create_all(bind=engine)
 
         # Run lightweight migrations for schema updates

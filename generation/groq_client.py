@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 from config import settings
+from storage.admin_state import read_options
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +168,7 @@ class GroqClientWrapper:
                 finish_reason = getattr(choice, "finish_reason", "stop")
 
                 # Handle output-token limit (finish_reason == "length") rather than silently truncating
-                if finish_reason == "length":
+                if finish_reason == "length" and not read_options().get("max_response_tokens"):
                     logger.warning(f"Groq output reached token limit (finish_reason='length') on {current_model}. Initiating seamless continuation...")
                     continuation_passes = 0
                     while finish_reason == "length" and continuation_passes < 2:
@@ -291,7 +292,7 @@ class GroqClientWrapper:
                             finish_reason = chunk.choices[0].finish_reason
 
                 # If output hit token limit (length), seamlessly stream continuation passes
-                if finish_reason == "length" and yielded_any:
+                if finish_reason == "length" and yielded_any and not read_options().get("max_response_tokens"):
                     logger.info(f"Groq stream reached length limit on {current_model}. Initiating stream continuation...")
                     continuation_passes = 0
                     accumulated = "".join(collected_tokens)

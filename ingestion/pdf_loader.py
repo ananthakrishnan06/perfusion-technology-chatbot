@@ -94,6 +94,12 @@ class PDFLoader:
             for page_index in range(total_pages):
                 page = doc.load_page(page_index)
                 page_text = page.get_text("text") or ""
+                if not page_text.strip() and settings.PDF_OCR_LANG:
+                    try:
+                        text_page = page.get_textpage_ocr(language=settings.PDF_OCR_LANG, dpi=150, full=True)
+                        page_text = page.get_text("text", textpage=text_page)
+                    except (RuntimeError, ValueError):
+                        pass
                 raw_pages_text.append(page_text)
 
         finally:

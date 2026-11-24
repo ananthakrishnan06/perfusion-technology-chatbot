@@ -14,6 +14,8 @@ from api.routes_study import router as study_router
 from api.routes_auth import router as auth_router
 from api.routes_conversations import router as conversations_router
 from storage.db import init_db
+from api.routes_admin import router as admin_router
+from api.usage_monitor import monitor_usage
 from api.dependencies import get_container
 
 # Configure logging
@@ -33,7 +35,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}...")
     settings.ensure_directories()
     # Initialize PostgreSQL database if configured
-    init_db()
+    db_ready = init_db()
     # Trigger singleton container creation and index loading
     container = get_container()
     logger.info(
@@ -42,6 +44,9 @@ async def lifespan(app: FastAPI):
     )
     # Pre-warm embedding model to eliminate first-query cold-start latency
     container.embedding_manager.warmup()
+    if db_ready:
+        from storage.knowledge_archive import restore_library
+        restore_library(container.document_service)
     yield
     logger.info(f"Shutting down {settings.APP_NAME}...")
 
@@ -157,12 +162,15 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 
 # Register API Routers
+app.middleware('http')(monitor_usage)
+
 app.include_router(health_router)
 app.include_router(documents_router, prefix=settings.API_PREFIX)
 app.include_router(retrieval_router, prefix=settings.API_PREFIX)
 app.include_router(chat_router, prefix=settings.API_PREFIX)
 app.include_router(study_router, prefix=settings.API_PREFIX)
 app.include_router(auth_router, prefix=settings.API_PREFIX)
+app.include_router(admin_router, prefix=settings.API_PREFIX)
 app.include_router(conversations_router, prefix=settings.API_PREFIX)
 
 # Mount Frontend UI (Matching User's Perfusion AI Specification)

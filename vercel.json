@@ -4,6 +4,7 @@
   "cleanUrls": true,
   "outputDirectory": "frontend",
   "redirects": [
+    { "source": "/admin", "destination": "/api/v1/admin/page", "permanent": false },
     { "source": "/maintenance", "destination": "/", "permanent": false },
     { "source": "/app", "destination": "/", "permanent": false },
     { "source": "/app/", "destination": "/", "permanent": false }

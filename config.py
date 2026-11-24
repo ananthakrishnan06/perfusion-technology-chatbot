@@ -98,6 +98,10 @@ class Settings(BaseSettings):
             return v.strip()
         return _get_or_create_persistent_secret()
 
+    ADMIN_BOOTSTRAP_EMAIL: str = ""
+    ADMIN_BOOTSTRAP_PASSWORD_HASH: str = ""
+    PDF_OCR_LANG: str = ""
+
     # Administrative users authorized for credential updates and index rebuilds
     ADMIN_EMAILS: List[str] = Field(
         default_factory=list,

@@ -22,11 +22,14 @@ class UserProfile(BaseModel):
     picture: Optional[str] = Field(None, description="URL of user's Google profile avatar")
     role: str = Field(default="Clinical Perfusionist", description="Clinical or educational user role")
     authenticated: bool = True
+    password_change_required: bool = False
     token: Optional[str] = Field(None, description="Application session or bearer token")
 
 
 class AuthConfigResponse(BaseModel):
     """Configuration endpoint for frontend Supabase & Google Auth initialization."""
+    maintenance: bool = False
+    registrations: bool = True
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_enabled: bool = False

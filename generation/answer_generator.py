@@ -3,6 +3,7 @@ import logging
 import re
 from typing import List, Optional, Tuple
 from config import settings
+from storage.admin_state import read_options
 from schemas.chat import ChatMessage, ChatResponse, Citation, MCQItem, MCQOption, MCQResponse, RetrievalMeta
 from schemas.retrieval import RetrievedChunk
 from generation.groq_client import GroqClientWrapper, GroqError
@@ -87,7 +88,11 @@ class AnswerGenerator:
         Generate chat completion trying the primary provider (Gemini) first,
         falling back seamlessly to the secondary provider (Groq) on error.
         """
-        is_gemini_primary = self.primary_provider == "gemini"
+        admin_options = read_options()
+        cap = admin_options.get("max_response_tokens")
+        if cap:
+            max_tokens = min(cap, max_tokens or cap)
+        is_gemini_primary = admin_options.get("primary_llm", self.primary_provider) == "gemini"
         first_client, first_name = (self.gemini_client, "Gemini") if is_gemini_primary else (self.groq_client, "Groq")
         second_client, second_name = (self.groq_client, "Groq") if is_gemini_primary else (self.gemini_client, "Gemini")
 
@@ -264,6 +269,9 @@ class AnswerGenerator:
         )
 
         max_tokens = exam_config.recommended_max_tokens if exam_config else None
+        cap = read_options().get("max_response_tokens")
+        if cap:
+            max_tokens = min(cap, max_tokens or cap)
 
         raw_answer = self._generate_completion(
             messages=messages,
@@ -317,8 +325,11 @@ class AnswerGenerator:
         )
 
         max_tokens = exam_config.recommended_max_tokens if exam_config else None
+        cap = read_options().get("max_response_tokens")
+        if cap:
+            max_tokens = min(cap, max_tokens or cap)
 
-        is_gemini_primary = self.primary_provider == "gemini"
+        is_gemini_primary = read_options().get("primary_llm", self.primary_provider) == "gemini"
         first_client, first_name = (self.gemini_client, "Gemini") if is_gemini_primary else (self.groq_client, "Groq")
         second_client, second_name = (self.groq_client, "Groq") if is_gemini_primary else (self.gemini_client, "Gemini")
 

@@ -11,6 +11,7 @@ from generation.answer_generator import AnswerGenerator, clean_generated_answer,
 from generation.exam_calibrator import detect_exam_marks, get_exam_configuration
 from services.conversation_service import ConversationService
 from storage.db import is_db_configured
+from storage.admin_state import read_options
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,20 @@ class ChatService:
 
         return matched_doc_ids if matched_doc_ids else None
 
+    def select_documents(self, request, question):
+        document_ids = request.document_ids or self._detect_mentioned_documents(question)
+        if not (request.subject or request.module):
+            return document_ids
+        docs = self.hybrid_retriever.metadata_store.list_documents()
+        selected = [
+            doc.document_id for doc in docs
+            if doc.status == "indexed"
+            and (not document_ids or doc.document_id in document_ids)
+            and (not request.subject or doc.subject.casefold() == request.subject.strip().casefold())
+            and (not request.module or doc.module.casefold() == request.module.strip().casefold())
+        ]
+        return selected or ["no_matching_document"]
+
     def ask_question(self, request: ChatRequest, user_id: Optional[str] = None) -> ChatResponse:
         """
         Retrieve relevant evidence and generate an evidence-grounded answer using Groq.
@@ -85,9 +100,7 @@ class ChatService:
             top_k = max(top_k, 8)
 
         # 1. Resolve document scope: explicit document_ids take priority, otherwise auto-detect from question
-        document_ids = request.document_ids
-        if not document_ids:
-            document_ids = self._detect_mentioned_documents(clean_q)
+        document_ids = self.select_documents(request, clean_q)
 
         # 2. Manage PostgreSQL conversation session and retrieve stored clinical memories
         conv_id = request.conversation_id
@@ -208,7 +221,7 @@ class ChatService:
         retrieved_chunks = self.hybrid_retriever.retrieve(
             query=search_query,
             document_ids=document_ids,
-            top_k=top_k
+            top_k=min(top_k, read_options().get("retrieval_limit", 20))
         )
 
         # 5. Build effective conversation history, prepending memory context if available
@@ -254,7 +267,16 @@ class ChatService:
             except Exception as e:
                 logger.error(f"Failed to persist chat turn in PostgreSQL: {e}")
 
+        self.add_citation_modules(chat_response.citations)
         return chat_response
+
+    def add_citation_modules(self, citations):
+        store = self.hybrid_retriever.metadata_store
+        for citation in citations:
+            chunk = store.get_chunk(citation.chunk_id)
+            document = store.get_document(chunk.document_id) if chunk else None
+            if document and document.module:
+                citation.module = document.module
 
     def generate_study_mcqs(self, request: MCQRequest) -> MCQResponse:
         """
@@ -291,9 +313,7 @@ class ChatService:
         elif len(clean_q.split()) >= 35 or len(clean_q) >= 200:
             top_k = max(top_k, 8)
 
-        document_ids = request.document_ids
-        if not document_ids:
-            document_ids = self._detect_mentioned_documents(clean_q)
+        document_ids = self.select_documents(request, clean_q)
 
         conv_id = request.conversation_id
         memory_context = ""
@@ -406,7 +426,7 @@ class ChatService:
         retrieved_chunks = self.hybrid_retriever.retrieve(
             query=search_query,
             document_ids=document_ids,
-            top_k=top_k
+            top_k=min(top_k, read_options().get("retrieval_limit", 20))
         )
 
         meta = {
@@ -473,6 +493,7 @@ class ChatService:
             or "insufficient supporting information" in cleaned_answer.lower()
         )
         citations = [] if insufficient else self.answer_generator.build_citations_from_chunks(retrieved_chunks)
+        self.add_citation_modules(citations)
         citations_dump = [c.model_dump() for c in citations]
 
         yield f"data: {json.dumps({'type': 'done', 'answer': cleaned_answer, 'citations': citations_dump, 'grounded': not insufficient, 'insufficient_evidence': insufficient})}\n\n"

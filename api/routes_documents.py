@@ -1,6 +1,10 @@
 from typing import List
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from config import settings
+from starlette.concurrency import run_in_threadpool
+from storage.admin_state import audit, read_options
+from storage.db import get_db
+from storage.knowledge_archive import archive_document, tombstone
 from schemas.auth import UserProfile
 from schemas.document import (
     DocumentDetailResponse,
@@ -24,7 +28,8 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 async def upload_documents(
     files: List[UploadFile] = File(..., description="One or more PDF files to ingest"),
     current_user: UserProfile = Depends(require_admin),
-    doc_service: DocumentService = Depends(get_document_service)
+    doc_service: DocumentService = Depends(get_document_service),
+    db=Depends(get_db),
 ):
     """
     Ingest PDF documents into the PerfusionGPT knowledge base.
@@ -38,7 +43,7 @@ async def upload_documents(
             detail="No files uploaded. Please provide at least one PDF file."
         )
 
-    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    max_bytes = min(read_options().get("max_pdf_mb", settings.MAX_UPLOAD_SIZE_MB), settings.MAX_UPLOAD_SIZE_MB) * 1024 * 1024
     if len(files) > 10:
         raise HTTPException(413, "Upload at most 10 documents at a time.")
     batch_bytes = 0
@@ -66,7 +71,15 @@ async def upload_documents(
         file_bytes = b"".join(chunks)
         prepared_files.append((file_bytes, filename))
 
-    batch_response = doc_service.process_batch(prepared_files)
+    batch_response = await run_in_threadpool(doc_service.process_batch, prepared_files)
+    if db is not None:
+        for result in batch_response.results:
+            if result.processing_status == "indexed":
+                archive_document(db, doc_service, result.document_id)
+                audit(db, current_user.sub, "pdf_uploaded", result.document_id)
+            elif result.processing_status == "failed":
+                audit(db, current_user.sub, "pdf_index_failed")
+        db.commit()
 
     # If all uploaded files failed, return 400 Bad Request with details
     if batch_response.total_failed > 0 and batch_response.total_uploaded == 0:
@@ -126,7 +139,8 @@ def get_document(
 def delete_document(
     document_id: str,
     current_user: UserProfile = Depends(require_admin),
-    doc_service: DocumentService = Depends(get_document_service)
+    doc_service: DocumentService = Depends(get_document_service),
+    db=Depends(get_db),
 ):
     """
     Remove a document from the active knowledge base, delete its stored file,
@@ -139,6 +153,10 @@ def delete_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Document with ID '{document_id}' not found."
         )
+    if db is not None:
+        tombstone(db, document_id)
+        audit(db, current_user.sub, "pdf_deleted", document_id)
+        db.commit()
     return {
         "status": "success",
         "message": f"Document '{document_id}' successfully removed from knowledge base and indices.",

@@ -1,6 +1,8 @@
 import logging
 import os
 import uuid
+from functools import wraps
+from threading import RLock
 from pathlib import Path
 from typing import List, Optional, Tuple
 from config import settings
@@ -22,6 +24,14 @@ from retrieval.keyword_search import BM25KeywordSearch
 logger = logging.getLogger(__name__)
 
 
+def serialized_mutation(method):
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        with self.mutation_lock:
+            return method(self, *args, **kwargs)
+    return run
+
+
 class DocumentService:
     """
     Coordinates document ingestion, validation, extraction, chunking,
@@ -37,6 +47,7 @@ class DocumentService:
         chunker: Optional[StructureAwareChunker] = None,
         documents_dir: Optional[Path] = None
     ):
+        self.mutation_lock = RLock()
         self.metadata_store = metadata_store
         self.vector_store = vector_store
         self.keyword_search = keyword_search
@@ -52,6 +63,7 @@ class DocumentService:
         all_chunks = self.metadata_store.get_all_chunks()
         self.keyword_search.index_chunks(all_chunks)
 
+    @serialized_mutation
     def process_pdf_file(self, file_bytes: bytes, original_filename: str) -> DocumentUploadResult:
         """
         Process a single PDF file: validate, extract, chunk, embed, index, and store.
@@ -116,6 +128,12 @@ class DocumentService:
             document_id=document_id,
             source_filename=original_filename
         )
+
+        if not chunks and summary["ocr_needed"] and settings.PDF_OCR_LANG:
+            safe_file_path.unlink(missing_ok=True)
+            return DocumentUploadResult(document_id=document_id, original_filename=original_filename,
+                                        processing_status="failed", page_count=summary["total_pages"], chunk_count=0,
+                                        error_details="No text could be extracted. Check the OCR configuration.")
 
         # 5. Embed and Index in FAISS (if chunks exist)
         if chunks:
@@ -198,6 +216,7 @@ class DocumentService:
             sample_chunks=chunks[:10]  # First 10 chunks as sample
         )
 
+    @serialized_mutation
     def delete_document(self, document_id: str) -> bool:
         """
         Delete a document, remove its disk file, and rebuild the FAISS & BM25 index
@@ -222,6 +241,7 @@ class DocumentService:
         self.rebuild_indices()
         return True
 
+    @serialized_mutation
     def rebuild_indices(self) -> dict:
         """
         Rebuild both FAISS and BM25 indexes from all active chunks currently in metadata store.
