@@ -112,3 +112,42 @@ def test_usage_report_records_stream_and_gives_real_totals(test_client, admin_au
     assert report["total"] == 1 and report["failed"] == 0
     assert report["daily"] == {report["end"]: 1}
     assert report["start"] < report["end"]
+
+
+
+def test_admin_batch_validation_does_not_index_partial_upload(test_client, admin_auth_headers, sample_perfusion_pdf_bytes):
+    files = [
+        ("files", ("valid.pdf", sample_perfusion_pdf_bytes, "application/pdf")),
+        ("files", ("invalid.pdf", b"not a PDF", "application/pdf")),
+    ]
+    response = test_client.post("/api/v1/admin/documents/upload", files=files, headers=admin_auth_headers)
+    assert response.status_code == 422
+    assert get_container().metadata_store.list_documents() == []
+    with get_session_factory()() as db:
+        assert db.query(KnowledgeDocument).count() == 0
+
+
+def test_admin_sessions_only_offer_actions_for_current_member_sessions(test_client, admin_auth_headers):
+    from datetime import timedelta
+    from storage.admin_models import AppSession, utcnow
+    from storage.db_models import User
+
+    now = utcnow()
+    with get_session_factory().begin() as db:
+        db.add_all([
+            User(id="staff", name="Staff", email="staff@example.org", role="administrator"),
+            User(id="member", name="Member", email="member@example.org"),
+            AppSession(id="staff-session", digest="1", user_id="staff", browser="Chrome", started=now, seen=now),
+            AppSession(id="expired-session", digest="2", user_id="member", browser="Chrome", started=now-timedelta(days=8), seen=now),
+            AppSession(id="current-session", digest="3", user_id="member", browser="Chrome", started=now-timedelta(days=2), seen=now),
+        ])
+    data = test_client.get("/api/v1/admin/sessions", headers=admin_auth_headers)
+    assert data.status_code == 200
+    rows = {row["id"]: row for row in data.json()}
+    assert rows["staff-session"]["can_sign_out"] is False
+    assert rows["expired-session"]["status"] == "expired" and rows["expired-session"]["can_sign_out"] is False
+    assert rows["current-session"]["status"] == "online" and rows["current-session"]["can_sign_out"] is True
+    assert test_client.post("/api/v1/admin/sessions/logout-all", headers=admin_auth_headers).status_code == 200
+    with get_session_factory()() as db:
+        assert db.get(AppSession, "staff-session").revoked is False
+        assert db.get(AppSession, "current-session").revoked is True

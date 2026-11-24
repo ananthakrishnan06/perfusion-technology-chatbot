@@ -159,7 +159,7 @@ function chart(title, data, line = false) {
   return box;
 }
 async function overview() {
-  const [metrics, usage] = await Promise.all([data("/admin/overview"),data("/admin/usage")]);
+  const [metrics, usage] = await Promise.all([data("/admin/overview"),data("/admin/usage").catch(() => null)]);
   const cards = tag("div"); cards.className = "cards";
   const titles = {users:"People registered",active:"People online",indexed:"PDFs ready to use",today:"Questions today"};
   for (const [key,label] of Object.entries(titles)) {
@@ -167,7 +167,8 @@ async function overview() {
     card.append(tag("span",label),tag("strong",metrics[key] ?? "Unavailable")); cards.append(card);
   }
   const charts = tag("div"); charts.className = "charts";
-  charts.append(chart("Questions by day",usage.daily),chart("People active by day",usage.active_users),chart("PDFs added by day",usage.uploads));
+  if (usage) charts.append(chart("Questions by day",usage.daily),chart("People active by day",usage.active_users),chart("PDFs added by day",usage.uploads));
+  else charts.append(tag("p","Activity is temporarily unavailable."));
   const tasks = panel("Quick actions");
   tasks.classList.add("quick-actions");
   tasks.append(container(
@@ -308,8 +309,8 @@ async function sessions() {
   return [button("Sign out all members",()=>confirmAction("End every normal user session?",async()=>{await data("/admin/sessions/logout-all",{});await refresh();})),
     table(["Name","Signed in","Last active","Duration","Device or browser","Status","Actions"],rows.map(row=>
     [row.username,date(row.login),date(row.last_active),Math.floor(row.duration_seconds/60)+" min",row.browser,sessionStatus[row.status] ?? "Unavailable",
-      container(button("Sign out this device",()=>confirmAction("End this session?",async()=>{await api("/admin/sessions/"+row.id,undefined,"DELETE");await refresh();})),
-        button("Sign out all devices",()=>confirmAction("End all sessions for "+row.username+"?",async()=>{await data("/admin/users/"+encodeURIComponent(row.user_id),{action:"logout"});await refresh();}))) ]))];
+      row.can_sign_out ? container(button("Sign out this device",()=>confirmAction("End this session?",async()=>{await api("/admin/sessions/"+row.id,undefined,"DELETE");await refresh();})),
+        button("Sign out all devices",()=>confirmAction("End all sessions for "+row.username+"?",async()=>{await data("/admin/users/"+encodeURIComponent(row.user_id),{action:"logout"});await refresh();}))) : "—" ]))];
 }
 async function analytics(userId="") {
   const [startLabel,start]=field("Start date","start","","date"),[endLabel,end]=field("End date","end","","date");
@@ -367,7 +368,7 @@ async function analytics(userId="") {
   })),result];
 }
 async function logs() {
-  const [rows,people,files]=await Promise.all([data("/admin/logs"),data("/admin/users"),data("/admin/documents")]);
+  const [rows,people,files]=await Promise.all([data("/admin/logs"),data("/admin/users").catch(()=>[]),data("/admin/documents").catch(()=>[])]);
   const names=new Map(people.map(person=>[person.id,person.username]));
   const titles=new Map(files.map(file=>[file.document_id,file.filename]));
   const actions={

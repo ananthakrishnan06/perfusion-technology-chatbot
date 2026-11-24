@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from api.routes_auth import get_optional_current_user, hash_password, require_admin, verify_password
+from api.routes_auth import SESSION_MAX_AGE_SECONDS, get_optional_current_user, hash_password, require_admin, verify_password
 from storage.admin_state import BOOTSTRAP_ID, audit, options
 from storage.admin_models import AccountControl, AdminSetting, AppSession, AuditEvent, UsageEvent, utcnow
 from storage.db import get_db
@@ -37,11 +37,31 @@ def stamp(value):
     return value.isoformat() + "Z" if value else None
 
 
+def protected_user(user):
+    return (
+        user.id == BOOTSTRAP_ID
+        or (user.role or "").lower() in {"admin", "administrator"}
+        or user.email.lower() in settings.ADMIN_EMAILS
+    )
+
+
+def session_limit(db):
+    return min(options(db).get("session_minutes", SESSION_MAX_AGE_SECONDS // 60), SESSION_MAX_AGE_SECONDS // 60)
+
+
+def online_sessions(db, now):
+    return db.query(AppSession.user_id).filter(
+        AppSession.revoked.is_(False),
+        AppSession.seen >= now - timedelta(minutes=ONLINE_MINUTES),
+        AppSession.started > now - timedelta(minutes=session_limit(db)),
+    )
+
+
 def managed_user(db, user_id):
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(404, "User not found.")
-    if user.id == BOOTSTRAP_ID or (user.role or "").lower() in {"admin", "administrator"} or user.email.lower() in settings.ADMIN_EMAILS:
+    if protected_user(user):
         raise HTTPException(403, "Administrator accounts are protected.")
     return user
 
@@ -93,7 +113,7 @@ def overview(admin=Depends(require_admin), db: Session = Depends(admin_db)):
     last = db.query(UsageEvent).filter(UsageEvent.operation.in_(["chat", "chat_stream", "study"])).order_by(UsageEvent.at.desc()).first()
     return {
         "users": db.query(User).count(),
-        "active": db.query(AppSession.user_id).filter(AppSession.revoked.is_(False), AppSession.seen >= now - timedelta(minutes=ONLINE_MINUTES)).distinct().count(),
+        "active": online_sessions(db, now).join(User, User.id == AppSession.user_id).distinct().count(),
         "pdfs": len(docs), "indexed": sum(doc.status == "indexed" for doc in docs),
         "requests": query.count(), "today": query.filter(UsageEvent.at >= now.replace(hour=0, minute=0, second=0, microsecond=0)).count(),
         "failed": query.filter_by(success=False).count(), "tokens": None,
@@ -107,7 +127,7 @@ def users(search: str = "", status: str = "", admin=Depends(require_admin), db: 
     from sqlalchemy import func
     counts = dict(db.query(UsageEvent.user_id, func.count()).group_by(UsageEvent.user_id))
     seen = dict(db.query(AppSession.user_id, func.max(AppSession.seen)).group_by(AppSession.user_id))
-    online = {row[0] for row in db.query(AppSession.user_id).filter(AppSession.revoked.is_(False), AppSession.seen >= utcnow()-timedelta(minutes=ONLINE_MINUTES))}
+    online = {row[0] for row in online_sessions(db, utcnow())}
     rows = []
     for user in db.query(User).order_by(User.created_at.desc()):
         control = accounts.get(user.id)
@@ -119,7 +139,7 @@ def users(search: str = "", status: str = "", admin=Depends(require_admin), db: 
             continue
         rows.append({"id": user.id, "username": label, "status": current, "online": user.id in online and current == "active",
                      "registered": stamp(user.created_at), "last_login": stamp(user.last_login_at), "last_active": stamp(seen.get(user.id)),
-                     "requests": counts.get(user.id, 0), "tokens": None, "role": "admin" if user.id == BOOTSTRAP_ID or user.email.lower() in settings.ADMIN_EMAILS or user.role == "admin" else "user",
+                     "requests": counts.get(user.id, 0), "tokens": None, "role": "admin" if protected_user(user) else "user",
                      "daily_limit": control.daily_limit if control else None})
     return rows
 
@@ -171,11 +191,12 @@ def change_user(user_id: str, body: UserAction, admin=Depends(require_admin), db
 def sessions(admin=Depends(require_admin), db: Session = Depends(admin_db)):
     now = utcnow()
     result = []
-    limit = options(db).get("session_minutes", 1440)
+    limit = session_limit(db)
     for row, user in db.query(AppSession, User).join(User, User.id == AppSession.user_id).order_by(AppSession.seen.desc()).limit(1000):
         expired = row.started + timedelta(minutes=limit) <= now
         result.append({"id": row.id, "user_id": user.id, "username": username(user), "browser": row.browser,
                        "login": stamp(row.started), "last_active": stamp(row.seen),
+                       "can_sign_out": not protected_user(user) and not row.revoked and not expired,
                        "duration_seconds": max(0, int(((row.seen if row.revoked or expired else now) - row.started).total_seconds())),
                        "status": "revoked" if row.revoked else "expired" if expired else "online" if row.seen >= now-timedelta(minutes=ONLINE_MINUTES) else "offline"})
     return result
@@ -196,7 +217,7 @@ def terminate_session(session_id: str, admin=Depends(require_admin), db: Session
 @router.post("/sessions/logout-all")
 def logout_all(admin=Depends(require_admin), db: Session = Depends(admin_db)):
     for user in db.query(User).all():
-        if user.id == BOOTSTRAP_ID or user.email.lower() in settings.ADMIN_EMAILS or user.role == "admin":
+        if protected_user(user):
             continue
         row = db.get(AccountControl, user.id)
         if not row:
@@ -405,7 +426,7 @@ def upload_pdfs(files: list[UploadFile] = File(...), categories: str = Form("{}"
         store_categories(service, replace, None)
     limit = min(options(db).get("max_pdf_mb", settings.MAX_UPLOAD_SIZE_MB), settings.MAX_UPLOAD_SIZE_MB)*1024*1024
     remaining = limit
-    results = []
+    prepared = []
     for file in files:
         name = re.split(r"[/\\]", file.filename or "")[-1][:200]
         data = file.file.read(remaining+1)
@@ -418,6 +439,10 @@ def upload_pdfs(files: list[UploadFile] = File(...), categories: str = Form("{}"
             audit(db, admin.sub, "pdf_validation_failed")
             db.commit()
             raise HTTPException(422, "Upload a valid PDF within the configured limit.")
+        prepared.append((data, name))
+
+    results = []
+    for data, name in prepared:
         result = index_pdf(service, db, admin, data, name, tags)
         if replace and result.processing_status == "indexed":
             service.delete_document(replace)
