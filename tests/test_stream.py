@@ -55,3 +55,41 @@ def test_chat_stream_endpoint(test_client, sample_perfusion_pdf_bytes, admin_aut
     assert "Point 2" in body
     assert '"type": "done"' in body
 
+
+
+
+def test_stream_retrieval_failure_is_a_safe_error(test_client, monkeypatch):
+    from api.dependencies import get_container
+    service = get_container().chat_service
+    monkeypatch.setattr(service.hybrid_retriever, "retrieve", MagicMock(side_effect=RuntimeError("private-provider-detail")))
+    response = test_client.post("/api/v1/chat/stream", json={"question": "Explain a bypass circuit"})
+    assert response.status_code == 200
+    assert "private-provider-detail" not in response.text
+    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+    assert events[-1]["type"] == "error"
+
+
+def test_stream_insufficient_evidence_has_no_citations(test_client, monkeypatch, sample_perfusion_pdf_bytes, admin_auth_headers):
+    from api.dependencies import get_container
+    from generation.answer_generator import INSUFFICIENT_EVIDENCE_PHRASE
+    response = test_client.post("/api/v1/documents/upload", files=[("files", ("manual.pdf", sample_perfusion_pdf_bytes, "application/pdf"))], headers=admin_auth_headers)
+    assert response.status_code == 200
+    monkeypatch.setattr(get_container().answer_generator, "stream_answer", lambda **kwargs: iter([INSUFFICIENT_EVIDENCE_PHRASE]))
+    response = test_client.post("/api/v1/chat/stream", json={"question": "Explain an oxygenator"})
+    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+    done = events[-1]
+    assert done["type"] == "done"
+    assert done["grounded"] is False
+    assert done["insufficient_evidence"] is True
+    assert done["citations"] == []
+
+
+
+@pytest.mark.parametrize("ownership,expected", [("not_found", 404), ("db_unavailable", 503), ("error", 503)])
+@pytest.mark.parametrize("route", ["ask", "stream"])
+def test_chat_rejects_unverifiable_conversation(test_client, monkeypatch, auth_headers, ownership, expected, route):
+    from api.dependencies import get_container
+    service = get_container().chat_service
+    monkeypatch.setattr(service.conversation_service, "check_conversation_ownership", lambda *args: ownership)
+    response = test_client.post("/api/v1/chat/" + route, json={"question": "Explain ECMO", "conversation_id": "missing"}, headers=auth_headers)
+    assert response.status_code == expected

@@ -890,6 +890,7 @@ async function sendChatMessage() {
   if (!chatMessages) return;
 
   state.isChatSending = true;
+  state.currentCitations = [];
   input.value = '';
   input.style.height = 'auto';
 
@@ -1049,6 +1050,11 @@ async function sendChatMessage() {
               throw streamErr;
             } else if (eventData.type === 'done') {
               streamCompleted = true;
+              const evidenceDot = assistantMsgEl.querySelector('.bg-emerald-500');
+              if (evidenceDot && eventData.grounded === false) {
+                evidenceDot.classList.replace('bg-emerald-500', 'bg-amber-500');
+              }
+              state.currentCitations = Array.isArray(eventData.citations) ? eventData.citations : [];
               streamedAnswer = eventData.answer || streamedAnswer;
               if (streamedAnswer && streamedAnswer.trim()) {
                 proseDiv.innerHTML = renderMarkdownSafely(streamedAnswer);
@@ -1130,6 +1136,9 @@ async function sendChatMessage() {
       }
 
       const data = await response.json();
+      if (typeof data.answer !== 'string' || !data.answer.trim()) {
+        throw new Error('No answer was received. Please try again.');
+      }
       if (data.conversation_id) {
         state.currentConversationId = data.conversation_id;
         const storageKey = (state.user && state.user.sub) ? `perfusion_current_conv_id_${state.user.sub}` : 'perfusion_current_conv_id';

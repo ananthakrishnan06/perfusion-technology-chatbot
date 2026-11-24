@@ -1,4 +1,5 @@
 import logging
+import json
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -20,6 +21,15 @@ router = APIRouter(dependencies=[Depends(check_ai_quota)], prefix="/chat", tags=
 
 class TranscribeResponse(BaseModel):
     text: str
+
+
+def answer_events(service, request, user_id):
+    """Handle failures when the lazy generator actually runs."""
+    try:
+        yield from service.stream_question(request, user_id=user_id)
+    except Exception as exc:
+        logger.error("Chat stream failed (%s)", type(exc).__name__, exc_info=True)
+        yield f"data: {json.dumps({'type': 'error', 'error': 'The answer could not be completed. Please try again.'})}\n\n"
 
 
 @router.post(
@@ -85,6 +95,10 @@ def stream_question(
                 detail="Authentication required to access conversation history."
             )
         ownership = chat_service.conversation_service.check_conversation_ownership(conv_id, user_id)
+        if ownership == "not_found":
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        if ownership not in ("ok", "forbidden"):
+            raise HTTPException(status_code=503, detail="Conversation history is temporarily unavailable.")
         if ownership == "forbidden":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -93,7 +107,7 @@ def stream_question(
 
     try:
         return StreamingResponse(
-            chat_service.stream_question(request, user_id=user_id),
+            answer_events(chat_service, request, user_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

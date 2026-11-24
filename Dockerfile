@@ -7,7 +7,8 @@ WORKDIR /app
 # Prevent Python from writing .pyc files and enable unbuffered output for real-time Cloud Run logging
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PORT=8080
+    PORT=8080 \
+    HF_HOME=/app/.cache/huggingface
 
 # Install minimal system dependencies (curl for healthchecks, build-essential for wheels)
 RUN apt-get update && apt-get install -y --no-install-recommends \

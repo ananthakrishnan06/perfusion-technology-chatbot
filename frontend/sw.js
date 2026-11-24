@@ -4,7 +4,7 @@
 // STRICT SECURITY POLICY: API calls, authentication tokens, private chat histories,
 // and user data are NEVER stored in CacheStorage.
 
-const CACHE_NAME = 'perfusion-ai-session-v9';
+const CACHE_NAME = 'perfusion-ai-session-v10';
 
 // Static Shell Assets to Pre-cache
 const PRECACHE_ASSETS = [
@@ -13,7 +13,7 @@ const PRECACHE_ASSETS = [
   '/style.css?v=20261018_v10',
   '/config.js?v=3',
   '/vendor/katex/katex.min.js',
-  '/app.js?v=9',
+  '/app.js?v=10',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -116,8 +116,12 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch(() => {
-          return caches.match('/index.html', { ignoreSearch: true }) || caches.match('/', { ignoreSearch: true });
+        .catch(async () => {
+          return await caches.match('/index.html', { ignoreSearch: true })
+            || await caches.match('/', { ignoreSearch: true })
+            || new Response('You are offline. Please reconnect and reload.', {
+              status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+            });
         })
     );
     return;

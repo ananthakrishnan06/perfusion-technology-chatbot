@@ -100,6 +100,10 @@ class ChatService:
                         detail="Authentication required to access conversation history."
                     )
                 ownership = self.conversation_service.check_conversation_ownership(conv_id, user_id)
+                if ownership == "not_found":
+                    raise HTTPException(status_code=404, detail="Conversation not found.")
+                if ownership not in ("ok", "forbidden"):
+                    raise HTTPException(status_code=503, detail="Conversation history is temporarily unavailable.")
                 if ownership == "forbidden":
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
@@ -301,6 +305,10 @@ class ChatService:
                         detail="Authentication required to access conversation history."
                     )
                 ownership = self.conversation_service.check_conversation_ownership(conv_id, user_id)
+                if ownership == "not_found":
+                    raise HTTPException(status_code=404, detail="Conversation not found.")
+                if ownership not in ("ok", "forbidden"):
+                    raise HTTPException(status_code=503, detail="Conversation history is temporarily unavailable.")
                 if ownership == "forbidden":
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
@@ -458,9 +466,16 @@ class ChatService:
             return
 
         cleaned_answer = clean_generated_answer(complete_text)
-        citations_dump = [c.model_dump() if hasattr(c, "model_dump") else c.dict() for c in self.answer_generator.build_citations_from_chunks(retrieved_chunks)]
+        insufficient = (
+            not retrieved_chunks
+            or INSUFFICIENT_EVIDENCE_PHRASE.lower() in cleaned_answer.lower()
+            or "could not find sufficient" in cleaned_answer.lower()
+            or "insufficient supporting information" in cleaned_answer.lower()
+        )
+        citations = [] if insufficient else self.answer_generator.build_citations_from_chunks(retrieved_chunks)
+        citations_dump = [c.model_dump() for c in citations]
 
-        yield f"data: {json.dumps({'type': 'done', 'answer': cleaned_answer, 'citations': citations_dump})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'answer': cleaned_answer, 'citations': citations_dump, 'grounded': not insufficient, 'insufficient_evidence': insufficient})}\n\n"
 
         # Background async persistence to PostgreSQL
         if is_db_configured() and conv_id and user_id:
@@ -471,7 +486,7 @@ class ChatService:
                     user_content=clean_q,
                     assistant_content=cleaned_answer,
                     citations=citations_dump,
-                    grounded=bool(retrieved_chunks)
+                    grounded=not insufficient
                 )
                 threading.Thread(
                     target=self.conversation_service.extract_and_memorize,
