@@ -325,8 +325,12 @@ class AnswerGenerator:
         tokens_emitted = 0
         try:
             for token in first_client.stream_chat_completion(messages=messages, max_tokens=max_tokens):
+                if not token or (tokens_emitted == 0 and not token.strip()):
+                    continue
                 tokens_emitted += 1
                 yield token
+            if tokens_emitted == 0:
+                raise RuntimeError("The primary provider returned an empty answer stream.")
         except Exception as first_err:
             if tokens_emitted == 0:
                 logger.warning(

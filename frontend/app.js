@@ -1032,6 +1032,7 @@ async function sendChatMessage() {
             const eventData = JSON.parse(trimmed.slice(5).trim());
             if (eventData.type === 'meta') {
               if (eventData.conversation_id) {
+                payload.conversation_id = eventData.conversation_id;
                 state.currentConversationId = eventData.conversation_id;
                 const storageKey = (state.user && state.user.sub) ? `perfusion_current_conv_id_${state.user.sub}` : 'perfusion_current_conv_id';
                 localStorage.setItem(storageKey, eventData.conversation_id);
@@ -1079,7 +1080,7 @@ async function sendChatMessage() {
           }
         };
 
-        while (true) {
+        while (!streamCompleted) {
           const { done, value } = await reader.read();
           if (done) break;
 
@@ -1106,7 +1107,13 @@ async function sendChatMessage() {
         }
       }
     } catch (streamErr) {
-      console.warn('Streaming encountered issue, falling back to /ask:', streamErr);
+      if (streamCompleted && streamedAnswer.trim()) {
+        state.chatHistory.push({ role: 'user', content: query });
+        state.chatHistory.push({ role: 'assistant', content: streamedAnswer });
+        streamSucceeded = true;
+      } else {
+        console.warn('Streaming encountered issue, falling back to /ask:', streamErr);
+      }
     }
 
     if (streamRes && streamRes.status >= 400 && streamRes.status < 500 &&

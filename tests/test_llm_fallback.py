@@ -201,3 +201,25 @@ def test_mcq_generation_fallback_to_groq(sample_retrieved_chunk):
     assert mcq_res.total_questions == 1
     assert mcq_res.questions[0].correct_answer == "A"
     assert "Sweep gas" in mcq_res.questions[0].options[0].text
+
+
+
+@pytest.mark.parametrize("primary", ["gemini", "groq"])
+def test_empty_primary_stream_uses_secondary(sample_retrieved_chunk, primary):
+    gemini = MagicMock(spec=GeminiClientWrapper)
+    groq = MagicMock(spec=GroqClientWrapper)
+    first, second = (gemini, groq) if primary == "gemini" else (groq, gemini)
+    first.stream_chat_completion.return_value = iter(["", " "])
+    second.stream_chat_completion.return_value = iter(["A complete answer."])
+    generator = AnswerGenerator(gemini_client=gemini, groq_client=groq, primary_provider=primary)
+    assert list(generator.stream_answer("Explain sweep gas", [sample_retrieved_chunk])) == ["A complete answer."]
+    second.stream_chat_completion.assert_called_once()
+
+
+def test_stream_preserves_spaces_between_words(sample_retrieved_chunk):
+    gemini = MagicMock(spec=GeminiClientWrapper)
+    groq = MagicMock(spec=GroqClientWrapper)
+    gemini.stream_chat_completion.return_value = iter(["Sweep", " ", "gas"])
+    generator = AnswerGenerator(gemini_client=gemini, groq_client=groq, primary_provider="gemini")
+    assert "".join(generator.stream_answer("Explain sweep gas", [sample_retrieved_chunk])) == "Sweep gas"
+    groq.stream_chat_completion.assert_not_called()
